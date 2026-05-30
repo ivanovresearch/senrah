@@ -1,0 +1,13 @@
+# GSD planning docs kept local-only
+.planning/
+
+# Secrets — never commit real values
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
