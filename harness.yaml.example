@@ -1,0 +1,26 @@
+# harness.yaml — project-local config (non-secret tunables only)
+# Copy to harness.yaml in your project root and edit as needed.
+# NEVER put secrets here. DATABASE_URL, GITHUB_TOKEN, OPENAI_API_KEY come from ENV.
+
+project:
+  name: sample
+
+repositories:
+  - type: github
+    name: dotnet/runtime
+
+ingest:
+  default_last_n: 100
+
+embed:
+  model: text-embedding-3-small
+  version: v1
+  problem_limit_tokens: 1500
+  diff_limit_tokens: 6000
+
+search:
+  top_n: 5
+  score_threshold: 0.40
+  problem_weight: 0.6
+  solution_weight: 0.4
+  oversample_factor: 5
