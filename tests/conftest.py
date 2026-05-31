@@ -13,13 +13,22 @@ schema call pg_dsn_migrated (which runs migrations once per session).
 
 from __future__ import annotations
 
+import asyncio
 import os
 import random
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from testcontainers.postgres import PostgresContainer
+
+# psycopg3 async cannot run on Windows' default ProactorEventLoop. Integration
+# and E2E tests that exercise the async pool (e.g. SkillRepo.search) require the
+# SelectorEventLoop on Windows — mirror the CLI entry point's policy here so
+# `pytest`/`pytest -m e2e` works on Windows. No-op on other platforms.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Repo root: two levels up from tests/
 REPO_ROOT = Path(__file__).parent.parent
