@@ -12,7 +12,17 @@ The entry point in pyproject.toml points here:
 
 from __future__ import annotations
 
+import asyncio
+import sys
+
 import typer
+
+# psycopg3 async cannot run on Windows' default ProactorEventLoop. The CLI uses
+# an async connection pool (e.g. `harness search`), so select the
+# SelectorEventLoop on Windows before any asyncio.run() in a subcommand.
+# No-op on non-Windows platforms.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from harness.cli.ingest import ingest_cmd
 from harness.cli.index import index_cmd

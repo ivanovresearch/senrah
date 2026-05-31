@@ -152,6 +152,8 @@ async def _run_search(
     problem_weight: float,
     solution_weight: float,
     embed_model: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ):
     """Embed query, open async pool, call SkillRepo.search, return results.
 
@@ -165,8 +167,11 @@ async def _run_search(
 
     # Embed the query once (symmetric retrieval — RESEARCH query-embedding decision).
     # The same vector is compared against both problem_embedding and solution_embedding.
-    # T-04-05: OPENAI_API_KEY read from ENV by AsyncOpenAI.
-    query_vecs = await embed_texts([query], model=embed_model)
+    # api_key + base_url route through the configured provider (OpenAI / OpenRouter),
+    # mirroring the index path; key flows from EnvSettings (ENV-only secret).
+    query_vecs = await embed_texts(
+        [query], model=embed_model, api_key=api_key, base_url=base_url
+    )
     query_vec = query_vecs[0]
 
     # Open async pool + register pgvector type (create_pool handles both).
@@ -263,6 +268,8 @@ def search_cmd(
                 problem_weight=search_cfg.problem_weight,
                 solution_weight=search_cfg.solution_weight,
                 embed_model=cfg.embed.model,
+                api_key=env.openai_api_key,
+                base_url=cfg.embed.base_url,
             )
         )
     except Exception as exc:
