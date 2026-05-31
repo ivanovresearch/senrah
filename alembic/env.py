@@ -35,6 +35,14 @@ def get_url() -> str:
             "DATABASE_URL is not set. Export it as an environment variable before "
             "running Alembic. Example: DATABASE_URL=postgresql://user:pass@host/db alembic upgrade head"
         )
+    # This project uses psycopg3 only (no psycopg2). SQLAlchemy defaults the
+    # bare `postgresql://` scheme to the psycopg2 dialect, so coerce the scheme
+    # to the psycopg3 driver (`postgresql+psycopg://`). Idempotent for URLs that
+    # already specify the psycopg driver.
+    for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://", "postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            url = "postgresql+psycopg://" + url[len(prefix):]
+            break
     return url
 
 
