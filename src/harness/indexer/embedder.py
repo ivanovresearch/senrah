@@ -35,6 +35,41 @@ _enc = tiktoken.get_encoding("cl100k_base")
 # Conservative value gives headroom against undocumented per-call limits.
 _BATCH_SIZE = 2048
 
+# Maximum TOKENS per single embeddings API call. OpenAI-compatible endpoints
+# cap total tokens per request (~300k for OpenAI); some providers (incl.
+# OpenRouter) return HTTP 200 with an empty `data` array when the cap is
+# exceeded, which the OpenAI SDK surfaces as "No embedding data received".
+# Batching by input count alone is insufficient — a single batch of large
+# diffs (each up to diff_limit_tokens) can blow past the cap. Use a
+# conservative per-request token budget well under the provider ceiling.
+_MAX_BATCH_TOKENS = 100_000
+
+
+def _token_batches(texts: list[str]) -> list[list[str]]:
+    """Split texts into batches bounded by BOTH input count and total tokens.
+
+    Each batch has at most _BATCH_SIZE inputs AND at most _MAX_BATCH_TOKENS
+    tokens (counted via the same cl100k_base encoding used for truncation).
+    A single text is never split (callers truncate to <= diff_limit_tokens
+    first, which is far below the per-request budget).
+    """
+    batches: list[list[str]] = []
+    current: list[str] = []
+    current_tokens = 0
+    for text in texts:
+        text_tokens = len(_enc.encode(text))
+        would_exceed_tokens = current and (current_tokens + text_tokens > _MAX_BATCH_TOKENS)
+        would_exceed_count = len(current) >= _BATCH_SIZE
+        if would_exceed_tokens or would_exceed_count:
+            batches.append(current)
+            current = []
+            current_tokens = 0
+        current.append(text)
+        current_tokens += text_tokens
+    if current:
+        batches.append(current)
+    return batches
+
 
 # ---------------------------------------------------------------------------
 # Token-based truncation (D-06 / D-07)
@@ -153,12 +188,16 @@ async def embed_texts(
 
     all_embeddings: list[list[float]] = []
 
-    # Process in batches to stay within API limits (T-03-05: DoS mitigation)
-    for batch_start in range(0, len(texts), _BATCH_SIZE):
-        batch = texts[batch_start : batch_start + _BATCH_SIZE]
+    # Process in batches bounded by input count AND token budget (T-03-05: DoS
+    # mitigation; also prevents the provider returning empty data on oversized
+    # requests). encoding_format="float" is explicit so the SDK does not default
+    # to base64 (which raises a misleading "No embedding data received" on some
+    # OpenAI-compatible providers) and returns plain float lists.
+    for batch in _token_batches(texts):
         response = await client.embeddings.create(
             model=model,
             input=batch,
+            encoding_format="float",
         )
         # response.data is guaranteed to be ordered to match input order
         all_embeddings.extend(item.embedding for item in response.data)
