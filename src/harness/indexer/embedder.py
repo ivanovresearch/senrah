@@ -176,6 +176,14 @@ async def embed_texts(
     if not texts:
         return []
 
+    # Sanitize empty/whitespace-only inputs. The embeddings API rejects empty
+    # strings, and some providers (OpenRouter) respond to a batch containing one
+    # with HTTP 200 + null data, poisoning every other input in that batch. A PR
+    # with no diff (Phase 1 minimal ingest does not yet filter empty diffs — that
+    # is INGEST-03 in Phase 3) yields an empty solution text; substitute a single
+    # space so the request succeeds and input/output ordering is preserved.
+    texts = [t if (t and t.strip()) else " " for t in texts]
+
     # Instantiate per-call (stateless; avoids shared mutable state across tasks).
     # Only pass api_key / base_url when provided so the SDK's ENV-based defaults
     # still apply otherwise (T-03-01: key never logged, never in config).
@@ -199,7 +207,16 @@ async def embed_texts(
             input=batch,
             encoding_format="float",
         )
-        # response.data is guaranteed to be ordered to match input order
-        all_embeddings.extend(item.embedding for item in response.data)
+        # Guard: a non-erroring provider response with empty/None data must not
+        # crash with an opaque "NoneType is not iterable". Surface it clearly.
+        data = response.data
+        if not data:
+            raise RuntimeError(
+                f"Embeddings API returned no data for a batch of {len(batch)} "
+                f"input(s) (model={model}). The provider may have rejected the "
+                f"request (e.g. token/size limit)."
+            )
+        # response.data is ordered to match input order
+        all_embeddings.extend(item.embedding for item in data)
 
     return all_embeddings
