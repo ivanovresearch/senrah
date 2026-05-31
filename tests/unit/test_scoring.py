@@ -92,14 +92,24 @@ class TestScoringModuleConstraints:
         assert "harness.indexer" not in src_text, "scoring.py must not import harness.indexer"
 
     def test_no_external_deps(self):
-        """scoring.py should have no non-stdlib imports (pure function requirement)."""
+        """scoring.py should have no non-stdlib import statements (pure function requirement)."""
         import pathlib
         import importlib.util
+        import re
         source = importlib.util.find_spec("harness.scoring")
         src_path = pathlib.Path(source.origin)
         src_text = src_path.read_text()
         # Only stdlib imports allowed: typing, __future__ etc.
         # Must not import openai, tiktoken, psycopg, etc.
+        # Check for actual import statements (not occurrences in comments/docstrings)
+        import_lines = [
+            line.strip()
+            for line in src_text.splitlines()
+            if re.match(r"^\s*(import|from)\s+", line)
+        ]
         forbidden = ["openai", "tiktoken", "psycopg", "pgvector", "yaml", "requests", "httpx"]
         for pkg in forbidden:
-            assert pkg not in src_text, f"scoring.py must not import {pkg}"
+            for line in import_lines:
+                assert not re.search(rf"\b{re.escape(pkg)}\b", line), (
+                    f"scoring.py must not import {pkg} (found: {line!r})"
+                )
