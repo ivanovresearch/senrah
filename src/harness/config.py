@@ -68,6 +68,10 @@ class EmbedConfig:
     version: str = "v1"
     problem_limit_tokens: int = 1500
     diff_limit_tokens: int = 6000
+    # Optional OpenAI-compatible endpoint (non-secret — URL only). Set to
+    # https://openrouter.ai/api/v1 to route embeddings through OpenRouter, or
+    # an Azure / local endpoint. None → OpenAI default (api.openai.com).
+    base_url: str | None = None
 
 
 @dataclass
@@ -175,6 +179,7 @@ def load_yaml_config(path: Path) -> YamlConfig:
         version=embed_block.get("version", "v1"),
         problem_limit_tokens=embed_block.get("problem_limit_tokens", 1500),
         diff_limit_tokens=embed_block.get("diff_limit_tokens", 6000),
+        base_url=embed_block.get("base_url") or None,
     )
 
     # Parse search block

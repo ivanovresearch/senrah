@@ -47,9 +47,17 @@ class Indexer:
     For the CLI (sync context), wrap with asyncio.run().
     """
 
-    def __init__(self, conn: psycopg.Connection, embed_cfg: EmbedConfig) -> None:
+    def __init__(
+        self,
+        conn: psycopg.Connection,
+        embed_cfg: EmbedConfig,
+        api_key: str | None = None,
+    ) -> None:
         self._conn = conn
         self._embed_cfg = embed_cfg
+        # API key flows from EnvSettings (ENV-only secret). When None, embed_texts
+        # falls back to the OPENAI_API_KEY env var via the SDK.
+        self._api_key = api_key
 
     async def run(self, repository_id: int) -> int:
         """Index all unindexed PRs for a repository.
@@ -98,8 +106,15 @@ class Indexer:
             texts.append(problem_text)
             texts.append(solution_text)
 
-        # Batch embed all texts (AsyncOpenAI under the hood; testable via patch)
-        embeddings = await embed_texts(texts, model=embed_cfg.model)
+        # Batch embed all texts (AsyncOpenAI under the hood; testable via patch).
+        # api_key + base_url route the request to OpenAI or any OpenAI-compatible
+        # endpoint (e.g. OpenRouter) configured via embed.base_url.
+        embeddings = await embed_texts(
+            texts,
+            model=embed_cfg.model,
+            api_key=self._api_key,
+            base_url=embed_cfg.base_url,
+        )
 
         # Write skills rows — one per PR, two embeddings each
         indexed = 0

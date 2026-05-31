@@ -110,19 +110,30 @@ def build_problem_text(title: str, body: str) -> str:
 async def embed_texts(
     texts: list[str],
     model: str = "text-embedding-3-small",
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> list[list[float]]:
-    """Embed a list of texts using AsyncOpenAI, returning vectors in input order.
+    """Embed a list of texts using an OpenAI-compatible API, in input order.
 
     The OpenAI API accepts up to _BATCH_SIZE inputs per call (A2 — 2048 verified).
     Large lists are split into batches and the results are re-assembled in order.
 
-    The AsyncOpenAI client reads OPENAI_API_KEY from the environment automatically
-    (T-03-01: key in ENV only, never in config or logs).
+    Provider-agnostic: `base_url` lets the same OpenAI client target any
+    OpenAI-compatible embeddings endpoint (e.g. OpenRouter at
+    https://openrouter.ai/api/v1, Azure OpenAI, or a local server). When
+    `base_url` is None the SDK default (api.openai.com) is used. The embedding
+    model MUST still return 1536-dim vectors to match the skills.vector(1536)
+    schema (e.g. text-embedding-3-small, or openai/text-embedding-3-small on
+    OpenRouter).
 
     Args:
         texts: List of strings to embed.  Each must be within the model token limit
                (truncate_to_tokens should be applied before calling this function).
         model: Embedding model name.  Defaults to text-embedding-3-small (vector(1536)).
+        api_key: API key for the provider.  When None, the SDK falls back to the
+                 OPENAI_API_KEY environment variable (T-03-01: secret from ENV only).
+        base_url: OpenAI-compatible endpoint base URL.  When None, the SDK default
+                  (OpenAI) is used.
 
     Returns:
         List of embedding vectors, one per input text, in the same order.
@@ -131,8 +142,14 @@ async def embed_texts(
         return []
 
     # Instantiate per-call (stateless; avoids shared mutable state across tasks).
-    # AsyncOpenAI reads OPENAI_API_KEY from ENV — T-03-01.
-    client = AsyncOpenAI()
+    # Only pass api_key / base_url when provided so the SDK's ENV-based defaults
+    # still apply otherwise (T-03-01: key never logged, never in config).
+    client_kwargs: dict[str, Any] = {}
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = AsyncOpenAI(**client_kwargs)
 
     all_embeddings: list[list[float]] = []
 

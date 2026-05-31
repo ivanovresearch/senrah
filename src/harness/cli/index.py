@@ -112,7 +112,7 @@ def index_cmd() -> None:
             typer.echo(f"Indexing {repo_name} (model: {cfg.embed.model} / {cfg.embed.version})...")
 
             try:
-                indexer = Indexer(conn, cfg.embed)
+                indexer = Indexer(conn, cfg.embed, api_key=env.openai_api_key)
                 count = asyncio.run(indexer.run(repository_id))
                 typer.echo(f"Done: {count} PR(s) indexed for {repo_name}.")
             except Exception as exc:

@@ -17,6 +17,12 @@ embed:
   version: v1
   problem_limit_tokens: 1500
   diff_limit_tokens: 6000
+  # Optional: route embeddings through any OpenAI-compatible endpoint.
+  # Leave unset for OpenAI (api.openai.com). For OpenRouter, uncomment both
+  # lines and set OPENAI_API_KEY to your OpenRouter key (sk-or-...).
+  # The model MUST return 1536-dim vectors to match the skills schema.
+  # base_url: https://openrouter.ai/api/v1
+  # model: openai/text-embedding-3-small
 
 search:
   top_n: 5
