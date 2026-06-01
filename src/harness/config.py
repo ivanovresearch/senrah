@@ -52,8 +52,8 @@ class EnvSettings(BaseSettings):
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
-        # Don't crash if .env is absent — CI typically sets vars directly
-        "env_file_override": False,
+        # A missing .env is already non-fatal in pydantic-settings (env vars are
+        # read directly), so no extra key is needed here.
     }
 
 

@@ -100,9 +100,11 @@ def serve_cmd(
         typer.echo(f"ERROR: Invalid harness.yaml: {exc}", err=True)
         raise typer.Exit(code=1)
 
-    # Resolve effective host/port: CLI flags override YAML config (D-07)
-    effective_host = host or cfg.mcp.host
-    effective_port = port or cfg.mcp.port
+    # Resolve effective host/port: CLI flags override YAML config (D-07).
+    # Use `is not None` so an explicit `--port 0`/`--host ""` is honored rather
+    # than silently falling back (0 and "" are falsy).
+    effective_host = host if host is not None else cfg.mcp.host
+    effective_port = port if port is not None else cfg.mcp.port
 
     # Map transport flag to FastMCP transport string
     # "stdio"   → "stdio"            (default; JSON-RPC over stdin/stdout)

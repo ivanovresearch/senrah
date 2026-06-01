@@ -29,7 +29,7 @@ Security:
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -141,6 +141,6 @@ class SearchResponseV1(BaseModel):
     model_dump(mode="json") is JSON-serializable (no datetime objects — Pitfall 4).
     """
 
-    status: str
+    status: Literal["ok", "no_matches_above_threshold"]
     results: list[PRResultV1]
     best_below_threshold: Optional[BelowThresholdV1] = None

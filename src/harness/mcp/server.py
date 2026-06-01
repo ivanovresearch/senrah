@@ -29,6 +29,7 @@ Security:
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Annotated, Optional
 
@@ -48,6 +49,19 @@ logger = logging.getLogger(__name__)
 
 # Absolute cap on `limit` parameter to prevent oversized payloads (T-02-08).
 _MAX_LIMIT = 20
+
+
+def _redact_credentials(message: str) -> str:
+    """Strip connection-string credentials/DSNs from a message before logging (D-06).
+
+    psycopg OperationalError messages can embed the full DATABASE_URL — including the
+    password — in their text. Redact URI userinfo and libpq ``password=`` fields so
+    secrets never reach the stderr log even though the client only ever sees the
+    generic ToolError message.
+    """
+    redacted = re.sub(r"(\w+://)[^/\s@]+@", r"\1***@", message)
+    redacted = re.sub(r"(?i)(password=)\S+", r"\1***", redacted)
+    return redacted
 
 # ---------------------------------------------------------------------------
 # Default config values used when cfg=None (unit-test path)
@@ -122,8 +136,8 @@ def create_mcp_server(
         FastMCP instance with search_prs_v1 tool registered and lifespan set.
     """
     # Resolve effective host/port/log_level from cfg or defaults
-    effective_host = host or (cfg.mcp.host if cfg else _DEFAULT_HOST)
-    effective_port = port or (cfg.mcp.port if cfg else _DEFAULT_PORT)
+    effective_host = host if host is not None else (cfg.mcp.host if cfg else _DEFAULT_HOST)
+    effective_port = port if port is not None else (cfg.mcp.port if cfg else _DEFAULT_PORT)
     effective_log_level = cfg.mcp.log_level if cfg else _DEFAULT_LOG_LEVEL
 
     @asynccontextmanager
@@ -199,8 +213,9 @@ def create_mcp_server(
         embed_base_url = call_cfg.embed.base_url if call_cfg else None
         api_key = call_env.openai_api_key if call_env else None
 
-        # Clamp limit to cap (T-02-08)
-        effective_limit = min(limit, _MAX_LIMIT)
+        # Clamp limit to [1, cap] (T-02-08). Lower bound prevents limit<=0 from
+        # silently returning [] (results[:0]) or producing a negative SQL LIMIT.
+        effective_limit = max(1, min(limit, _MAX_LIMIT))
 
         # Step 1: Embed the query (D-05: failure → generic ToolError)
         try:
@@ -211,7 +226,7 @@ def create_mcp_server(
                 base_url=embed_base_url,
             )
         except Exception as exc:
-            logger.error("Query embedding failed: %s", exc)
+            logger.error("Query embedding failed: %s", _redact_credentials(str(exc)))
             raise ToolError(
                 "Query embedding failed — check OPENAI_API_KEY and service availability"
             )
@@ -248,8 +263,9 @@ def create_mcp_server(
         except ToolError:
             raise  # already a ToolError — don't re-wrap
         except Exception as exc:
-            # Never log DSN — psycopg exceptions may include connection string (D-06)
-            logger.error("DB search error: %s", exc)
+            # Never log DSN — psycopg exceptions may include connection string (D-06).
+            # _redact_credentials strips userinfo/password before it reaches stderr.
+            logger.error("DB search error: %s", _redact_credentials(str(exc)))
             raise ToolError("Search backend unavailable")
 
         # Step 3: Build response envelope and text block
