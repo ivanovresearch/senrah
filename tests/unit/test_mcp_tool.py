@@ -1,45 +1,28 @@
 """
-tests/unit/test_mcp_tool.py — Wave 0 failing test scaffold for search_prs_v1 tool.
+tests/unit/test_mcp_tool.py — MCP tool tests for search_prs_v1.
 
 These tests verify the full MCP tool contract using an in-process MCP client
 (mcp.shared.memory.create_connected_server_and_client_session — no subprocess needed).
 
 The tool implementation lives in harness.mcp.server (created in Plan 02-02).
-Until the server module exists, all server-dependent tests are marked xfail so
-they do NOT break the test suite collection (they show as expected failures).
 
 Tests that only exercise the formatting/schema layer (test_files_capped_at_six,
-test_diff_excerpt_truncation, test_pr_link_derivation) may pass even in Wave 0
-once the formatting layer is implemented — they verify the underlying helpers
+test_diff_excerpt_truncation, test_pr_link_derivation) verify the underlying helpers
 independent of the server.
 
-Mocking strategy (Plan 02-02):
+Mocking strategy:
 - Patch harness.mcp.server.embed_texts to return a deterministic 1536-dim vector
-- Patch SkillRepo.search to return SearchResult fixtures (no real DB)
+- Patch harness.db.repos.skill.SkillRepo.search to return SearchResult fixtures (no real DB)
 - Use create_connected_server_and_client_session for full protocol round-trips
 """
 
 from __future__ import annotations
-
-import importlib
 
 import pytest
 
 from harness.db.repos.skill import SearchResult
 from harness.mcp.formatting import fmt_diff_excerpt_mcp, fmt_files_mcp
 from harness.mcp.schema import score_to_confidence_label
-
-# ---------------------------------------------------------------------------
-# Import guard for harness.mcp.server (does not exist until Plan 02-02)
-# ---------------------------------------------------------------------------
-_SERVER_AVAILABLE = importlib.util.find_spec("harness.mcp.server") is not None
-
-# All tests that require the server are marked xfail until Plan 02-02 creates it.
-_server_xfail = pytest.mark.xfail(
-    not _SERVER_AVAILABLE,
-    reason="harness.mcp.server implemented in Plan 02-02",
-    strict=False,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +86,10 @@ def test_pr_link_derivation():
 
 
 # ---------------------------------------------------------------------------
-# Wave 2 — server-dependent tests (xfail until harness.mcp.server exists)
+# Wave 2 — server-dependent tests
 # ---------------------------------------------------------------------------
 
 
-@_server_xfail
 async def test_tool_registered():
     """search_prs_v1 is registered and callable via the MCP protocol (MCP-01)."""
     from unittest.mock import AsyncMock, patch
@@ -131,7 +113,7 @@ async def test_tool_registered():
                 assert "search_prs_v1" in tool_names
 
 
-@_server_xfail
+
 async def test_tool_missing_query():
     """Missing required 'query' parameter returns isError=True (MCP-01 / T-02-05)."""
     from unittest.mock import AsyncMock, patch
@@ -150,7 +132,7 @@ async def test_tool_missing_query():
             assert result.isError
 
 
-@_server_xfail
+
 async def test_response_envelope_ok():
     """Successful response has status='ok', populated results with all MCP-02 fields."""
     from unittest.mock import AsyncMock, patch
@@ -189,7 +171,7 @@ async def test_response_envelope_ok():
                 assert "files_truncated" in r
 
 
-@_server_xfail
+
 async def test_debug_components():
     """debug=False omits p_sim/s_sim; debug=True includes them (MCP-02)."""
     from unittest.mock import AsyncMock, patch
@@ -223,7 +205,7 @@ async def test_debug_components():
                 assert result_debug.structuredContent["results"][0]["s_sim"] is not None
 
 
-@_server_xfail
+
 async def test_response_envelope_no_results():
     """No-results case: status='no_matches_above_threshold', results=[], best present."""
     from unittest.mock import AsyncMock, patch
@@ -253,7 +235,7 @@ async def test_response_envelope_no_results():
                 assert data["best_below_threshold"]["pr_number"] == 42
 
 
-@_server_xfail
+
 async def test_embed_failure_error():
     """OpenAI embed failure → isError=True, no DSN/internals leaked (MCP-03 / D-05)."""
     from unittest.mock import AsyncMock, patch
@@ -278,7 +260,7 @@ async def test_embed_failure_error():
             assert "postgresql://" not in error_text
 
 
-@_server_xfail
+
 async def test_db_failure_error():
     """DB failure → isError=True, generic message only, no DSN leaked (MCP-03 / D-06)."""
     from unittest.mock import AsyncMock, patch
@@ -304,7 +286,7 @@ async def test_db_failure_error():
                 assert "postgresql://" not in error_text
 
 
-@_server_xfail
+
 async def test_no_stdout_contamination():
     """Tool response content list contains only TextContent; no print() leaks (MCP-03)."""
     from unittest.mock import AsyncMock, patch
@@ -331,7 +313,7 @@ async def test_no_stdout_contamination():
                     assert item.type == "text"
 
 
-@_server_xfail
+
 async def test_stdio_transport_smoke():
     """In-process client round-trip simulates stdio transport (MCP-04)."""
     from unittest.mock import AsyncMock, patch
@@ -354,7 +336,7 @@ async def test_stdio_transport_smoke():
                 assert any(t.name == "search_prs_v1" for t in tools.tools)
 
 
-@_server_xfail
+
 def test_network_transport_config():
     """create_mcp_server with network settings sets stateless_http=True (MCP-04 / D-07)."""
     from harness.mcp.server import create_mcp_server
@@ -368,7 +350,7 @@ def test_network_transport_config():
         assert server.settings.host == "127.0.0.1"
 
 
-@_server_xfail
+
 async def test_repos_filter():
     """repos=['owner/repo'] narrows results; result repo field matches (SEARCH-03)."""
     from unittest.mock import AsyncMock, call, patch
@@ -398,7 +380,7 @@ async def test_repos_filter():
                     assert data["results"][0]["repo"] == "owner/repo"
 
 
-@_server_xfail
+
 async def test_repos_all_default():
     """repos=None (omitted) passes repos=None to SkillRepo.search (SEARCH-03)."""
     from unittest.mock import AsyncMock, patch
