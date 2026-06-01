@@ -30,3 +30,15 @@ search:
   problem_weight: 0.6
   solution_weight: 0.4
   oversample_factor: 5
+
+mcp:
+  # Maximum characters for diff excerpts returned by search_prs_v1 (D-04).
+  # Approx. 500 tokens at typical code density. Increase if agents need more diff context.
+  output_diff_limit: 2000
+  # Bind address for --transport network. Use "0.0.0.0" to expose on a shared interface
+  # (requires explicit opt-in — D-07). Default 127.0.0.1 keeps the server local-only.
+  host: "127.0.0.1"
+  # Bind port for --transport network.
+  port: 8000
+  # FastMCP log level. Use "INFO" or "DEBUG" for troubleshooting.
+  log_level: "WARNING"

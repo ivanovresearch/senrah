@@ -84,12 +84,29 @@ class SearchConfig:
 
 
 @dataclass
+class McpConfig:
+    """Non-secret MCP server tunables (D-04 / D-07).
+
+    output_diff_limit: Maximum characters for diff excerpts in search_prs_v1 output (D-04).
+    host: Bind address for --transport network (default 127.0.0.1 per D-07).
+    port: Bind port for --transport network.
+    log_level: FastMCP log level (WARNING by default — minimal output on stdio).
+    """
+
+    output_diff_limit: int = 2000
+    host: str = "127.0.0.1"
+    port: int = 8000
+    log_level: str = "WARNING"
+
+
+@dataclass
 class YamlConfig:
     project_name: str = ""
     repositories: list[dict] = field(default_factory=list)
     default_last_n: int = 100
     embed: EmbedConfig = field(default_factory=EmbedConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
+    mcp: McpConfig = field(default_factory=McpConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +209,20 @@ def load_yaml_config(path: Path) -> YamlConfig:
         oversample_factor=search_block.get("oversample_factor", 5),
     )
 
+    # Parse mcp block (D-04 / D-07)
+    mcp_block = raw.get("mcp", {}) or {}
+    mcp_cfg = McpConfig(
+        output_diff_limit=mcp_block.get("output_diff_limit", 2000),
+        host=mcp_block.get("host", "127.0.0.1"),
+        port=mcp_block.get("port", 8000),
+        log_level=mcp_block.get("log_level", "WARNING"),
+    )
+
     return YamlConfig(
         project_name=project_name,
         repositories=repositories,
         default_last_n=default_last_n,
         embed=embed_cfg,
         search=search_cfg,
+        mcp=mcp_cfg,
     )
