@@ -27,6 +27,7 @@ if sys.platform == "win32":
 from harness.cli.ingest import ingest_cmd
 from harness.cli.index import index_cmd
 from harness.cli.search import search_cmd
+from harness.cli.serve import serve_cmd
 
 app = typer.Typer(
     help="Harness — semantic PR search for AI coding agents.",
@@ -41,6 +42,9 @@ app.command("index")(index_cmd)
 
 # Search subcommand (Plan 01-04)
 app.command("search")(search_cmd)
+
+# Serve subcommand (Plan 02-03) — start the MCP server over stdio or network
+app.command("serve")(serve_cmd)
 
 
 if __name__ == "__main__":
