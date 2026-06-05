@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import psycopg
 
-from harness.db.models import Repository
+from harness.db.models import Repository, RepoOpState
 
 
 class RepositoryRepo:
@@ -64,3 +64,88 @@ class RepositoryRepo:
         if row is None:
             return None
         return Repository(id=row[0], project_id=row[1], type=row[2], name=row[3])
+
+    # ---------------------------------------------------------------------------
+    # Op-state methods (cursor + last-run) — execute-only, never committing.
+    # The Ingester owns the transaction (D-B3); these methods only execute SQL.
+    # All parameterized %(name)s placeholders — no f-string SQL (T-03-02).
+    # ---------------------------------------------------------------------------
+
+    def get_op_state(self, project_id: int, name: str) -> "RepoOpState | None":
+        """Return the op-state for the repository identified by project_id + name.
+
+        Returns None if no row exists (repository not yet registered or never run).
+        """
+        row = self._conn.execute(
+            """
+            SELECT cursor_merged_at, cursor_number, last_run_at, last_run_status, last_error
+            FROM repositories
+            WHERE project_id = %(project_id)s AND name = %(name)s
+            """,
+            {"project_id": project_id, "name": name},
+        ).fetchone()
+        if row is None:
+            return None
+        return RepoOpState(
+            cursor_merged_at=row[0],
+            cursor_number=row[1],
+            last_run_at=row[2],
+            last_run_status=row[3],
+            last_error=row[4],
+        )
+
+    def advance_cursor(
+        self,
+        repository_id: int,
+        merged_at: object,
+        number: int,
+    ) -> None:
+        """Advance the repository's high-water cursor atomically (GREATEST semantics).
+
+        Uses GREATEST(cursor_merged_at, %(merged_at)s) so that an out-of-created-order
+        older merge cannot move the cursor backward (D-B3 / T-03-04 / Pattern 4).
+
+        MUST be called inside the Ingester's per-PR transaction block. Never calls
+        conn.commit() — the Ingester owns commit/rollback.
+        """
+        self._conn.execute(
+            """
+            UPDATE repositories
+               SET cursor_merged_at = GREATEST(cursor_merged_at, %(merged_at)s),
+                   cursor_number    = %(number)s
+             WHERE id = %(repository_id)s
+            """,
+            {
+                "repository_id": repository_id,
+                "merged_at": merged_at,
+                "number": number,
+            },
+        )
+
+    def set_last_run(
+        self,
+        repository_id: int,
+        status: str,
+        ran_at: object,
+        last_error: str | None,
+    ) -> None:
+        """Record the outcome of the most recent ingest run.
+
+        Called in the Ingester's finally: block regardless of success/failure.
+        Never calls conn.commit() — the Ingester owns transaction lifecycle.
+        """
+        self._conn.execute(
+            """
+            UPDATE repositories
+               SET last_run_at     = %(ran_at)s,
+                   last_run_status = %(status)s,
+                   last_error      = %(last_error)s
+             WHERE id = %(repository_id)s
+            """,
+            {
+                "repository_id": repository_id,
+                "ran_at": ran_at,
+                "status": status,
+                "last_error": last_error,
+            },
+        )

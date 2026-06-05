@@ -56,3 +56,25 @@ class Skill:
     problem_embedding: list[float] | None = None
     solution_embedding: list[float] | None = None
     id: int | None = None
+
+
+@dataclass
+class RepoOpState:
+    """Operational state for a repository (cursor + last-run status).
+
+    Fields mirror the 0002 migration columns added to the repositories table
+    (D-A1 / D-B2 / D-B3). All fields are Optional because a repository row
+    can exist before any ingest run has been completed.
+
+    cursor_merged_at: high-water merged_at timestamp (GREATEST semantics)
+    cursor_number: PR number at the cursor position (tiebreak for same merged_at)
+    last_run_at: timestamp of the most recent completed ingest run
+    last_run_status: "success" | "error" | None
+    last_error: last per-run error message, if any
+    """
+
+    cursor_merged_at: datetime | None = None
+    cursor_number: int | None = None
+    last_run_at: datetime | None = None
+    last_run_status: str | None = None
+    last_error: str | None = None
