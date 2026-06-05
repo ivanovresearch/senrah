@@ -8,9 +8,26 @@ project:
 repositories:
   - type: github
     name: dotnet/runtime
+    # Per-repo scope overrides the project default (D-A3).
+    # mode: all | last_n | since_date | period
+    # value: omit for "all"; int for last_n; ISO date for since_date; "90d" for period.
+    # scope: { mode: last_n, value: 200 }
 
 ingest:
+  # Default scope for repos that omit per-repo scope (D-A3).
+  # Replaces the old default_last_n key. Supported modes: all, last_n, since_date, period.
+  # default_scope: { mode: last_n, value: 100 }
+  # Legacy key still supported for back-compat:
   default_last_n: 100
+  # Bot stop-list: authors unconditionally excluded (in addition to [bot] suffix).
+  # stop_list: [dependabot, renovate]
+  # Giant-PR thresholds (strictly-greater comparisons):
+  # max_files: 100     # exclude PRs touching more than this many files
+  # max_lines: 5000    # exclude PRs with more than this many added+deleted lines
+  # Rate-limit floor: pause ingest when remaining API calls < this value.
+  # rate_limit_floor: 100
+  # Optional inter-fetch delay in seconds (0.0 = off).
+  # inter_fetch_delay: 0.0
 
 embed:
   model: text-embedding-3-small
