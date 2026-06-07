@@ -21,9 +21,9 @@ Design decisions:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterator, Protocol
+from typing import Callable, Iterator, Protocol
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -52,14 +52,41 @@ class RawPR:
     repo_full_name: str
     linked_issue: str | None  # extracted from body via Closes/Fixes regex
     files_changed: list[str]
-    additions: int
-    deletions: int
+    # Eager giant-filter fields — populated on the single-PR path (fetch_pr) and
+    # in tests. On the diff-less traversal path they stay 0 and the real values
+    # are read lazily via size_loader/size() (see below). Default 0 so the
+    # traversal constructor can omit them.
+    additions: int = 0
+    deletions: int = 0
     # Cheap changed-file COUNT from the PR metadata (pr.changed_files). Carried
     # separately from files_changed because the diff-less traversal yields the
     # count (one int) without the file list (get_files() would paginate). The
     # Ingester's giant-PR filter (INGEST-03) reads this; files_changed stays []
     # at traversal time.
     changed_files: int = 0
+    # Lazy loader for the giant-filter fields (changed_files, additions,
+    # deletions). On the connector's diff-less traversal path these are NOT read
+    # eagerly — they live ONLY in the per-PR completion payload (GET /pulls/{n}),
+    # the N+1 of Finding 2. Reading them at construction would charge that GET for
+    # every yielded PR, INCLUDING bots that is_bot rejects for free off the
+    # list-payload author. The loader defers the read to size(), so the GET is
+    # paid only when the consumer actually needs the size (i.e. AFTER is_bot).
+    # compare/repr excluded so the closure does not affect this value object.
+    size_loader: Callable[[], tuple[int, int, int]] | None = field(
+        default=None, compare=False, repr=False
+    )
+
+    def size(self) -> tuple[int, int, int]:
+        """Return (changed_files, additions, deletions) for the giant filter.
+
+        If a lazy loader is set (traversal path), invoke it now — THIS is where
+        the per-PR completion GET fires. Call ONLY after is_bot so a bot rejected
+        by author costs zero completion GET. With no loader (fetch_pr, tests) the
+        eager fields are returned.
+        """
+        if self.size_loader is not None:
+            return self.size_loader()
+        return (self.changed_files, self.additions, self.deletions)
 
 
 @dataclass(frozen=True)

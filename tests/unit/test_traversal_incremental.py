@@ -29,7 +29,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from harness.connectors.base import PRCursor
+from harness.connectors.base import PRCursor, RateLimitStatus
 
 FAKE_TOKEN = "ghp_fake_incremental_traversal_token_12345"
 UTC = timezone.utc
@@ -120,15 +120,17 @@ class _FakeGitHubAPI:
     completion GET — making the N+1 observable.
     """
 
-    def __init__(self, pages: list[list[dict]]):
+    def __init__(self, pages: list[list[dict]], detailed_changed_files: int = 3):
         self.pages = pages
         self.list_gets = 0
         self.completion_gets = 0
+        self._detailed_changed_files = detailed_changed_files
         self._by_number = {pr["number"]: pr for page in pages for pr in page}
 
     def _detailed(self, n: int) -> dict:
         d = dict(self._by_number[n])
-        d.update({"additions": 10, "deletions": 2, "changed_files": 3})
+        d.update({"additions": 10, "deletions": 2,
+                  "changed_files": self._detailed_changed_files})
         return d
 
     def __call__(self, requester, verb, url, parameters=None, headers=None,
@@ -164,14 +166,15 @@ def _summary(
     merged_at: datetime,
     updated_at: datetime,
     created_at: datetime | None = None,
+    author: str = "dev",
 ) -> dict:
     created = created_at or datetime(2023, 1, 1, tzinfo=UTC)
     return {
         "url": f"https://api.github.com/repos/owner/repo/pulls/{number}",
         "id": number, "number": number, "state": "closed",
         "title": f"PR {number}", "body": "body",
-        "user": {"login": "dev", "id": 1,
-                 "url": "https://api.github.com/users/dev"},
+        "user": {"login": author, "id": 1,
+                 "url": f"https://api.github.com/users/{author}"},
         "merged_at": merged_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "updated_at": updated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -186,8 +189,8 @@ def fake_api():
 
     holder = {}
 
-    def install(pages):
-        api = _FakeGitHubAPI(pages)
+    def install(pages, **kwargs):
+        api = _FakeGitHubAPI(pages, **kwargs)
         holder["api"] = api
         return api
 
@@ -241,11 +244,18 @@ class TestIncrementalEfficiency:
             f"incremental scan paginated {api.list_gets} pages — it must stop at "
             "the cursor window (<=2), not walk the whole history"
         )
-        # N+1 is real: one completion GET per yielded PR (additions absent from
-        # the list payload). Documents the per-survivor metadata cost.
+        # Deferral (Finding 2 fix): the traversal itself fires ZERO completion
+        # GETs — the giant-filter fields (additions/deletions/changed_files) are
+        # read lazily via RawPR.size(), not at yield time.
+        assert api.completion_gets == 0, (
+            f"traversal must not fire completion GETs (deferred to size()); "
+            f"got {api.completion_gets}"
+        )
+        # size() is where the per-PR completion GET fires — exactly one per PR.
+        for r in results:
+            r.size()
         assert api.completion_gets == len(results), (
-            f"expected 1 completion GET per yielded PR (N+1), got "
-            f"{api.completion_gets} for {len(results)} yielded"
+            "size() fires exactly one completion GET per PR (the N+1, now deferred)"
         )
         assert all(r.diff is None for r in results), "traversal must not fetch diffs"
 
@@ -294,7 +304,8 @@ class TestIncrementalEfficiency:
             f"scan paginated {api.list_gets} pages — must stop at the cursor "
             "window even with a back-dated PR present"
         )
-        assert api.completion_gets == len(results)  # N+1, per survivor
+        # Deferral (Finding 2 fix): no completion GET during traversal itself.
+        assert api.completion_gets == 0
 
 
 class TestRecentMergedMetaEfficiency:
@@ -405,4 +416,53 @@ class TestOverlapMarginWindow:
         zero_margin = run(timedelta(0))
         assert 50 not in zero_margin, (
             "with margin=0 the in-window PR must NOT be yielded"
+        )
+
+
+class TestBotFilterCompletionCost:
+    """A bot rejected by is_bot (author — a list-payload field) must cost ZERO
+    completion GETs. The completion GET fetches additions/deletions/changed_files,
+    needed only by is_giant, which runs AFTER is_bot. So it must be paid only for
+    NON-bot PRs. Counted at the real Requester layer via _FakeGitHubAPI (the cost
+    is invisible to MagicMock connectors).
+
+    Validity: RED on the current _raw_meta, which reads pr.additions at yield time
+    — before the ingester's bot filter — so completion_gets includes the bots.
+    """
+
+    def test_bot_costs_no_completion_get(self, fake_api) -> None:
+        from harness.connectors.github import GitHubConnector
+        from harness.ingester.ingest import Ingester
+
+        def merged(n: int, author: str) -> dict:
+            d = datetime(2024, 5, (n % 27) + 1, tzinfo=UTC)
+            return _summary(n, merged_at=d, updated_at=d, author=author)
+
+        # 2 bots + 3 non-bots. Non-bots are GIANT (detailed changed_files=200) so
+        # is_giant filters them BEFORE fetch_diff — isolating the size() completion
+        # cost from fetch_diff's own GET.
+        page1 = [merged(1, "dependabot[bot]"), merged(2, "alice"),
+                 merged(3, "renovate[bot]")]
+        page2 = [merged(4, "bob"), merged(5, "carol")]
+        api = fake_api([page1, page2], detailed_changed_files=200)
+
+        connector = GitHubConnector(FAKE_TOKEN)
+        # Sidestep the /rate_limit GET — not what this test counts.
+        connector.rate_limit_status = lambda: RateLimitStatus(
+            remaining=5000, reset_at=datetime(2030, 1, 1, tzinfo=UTC), limit=5000
+        )
+
+        mock_conn = MagicMock()
+        with patch("harness.ingester.ingest.PRRepo"), patch(
+            "harness.ingester.ingest.RepositoryRepo"
+        ) as MockRepoRepo:
+            MockRepoRepo.return_value.upsert.return_value = MagicMock(id=1)
+            MockRepoRepo.return_value.get_op_state.return_value = None
+            Ingester(mock_conn).run(connector, "owner/repo", "proj")
+
+        non_bots = 3  # alice, bob, carol
+        assert api.completion_gets == non_bots, (
+            f"expected {non_bots} completion GETs (one per non-bot, for the giant "
+            f"check), got {api.completion_gets} — a bot rejected by author must "
+            "cost ZERO completion GETs"
         )

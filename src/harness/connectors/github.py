@@ -170,14 +170,19 @@ class GitHubConnector:
             )
 
     def _raw_meta(self, pr, repo_full_name: str) -> RawPR:  # type: ignore[no-untyped-def]
-        """Build a diff-less RawPR from a PR's cheap metadata.
+        """Build a diff-less RawPR from a PR's CHEAP list-payload metadata only.
 
-        Accessing pr.additions/deletions completes the list-sourced PR via one
-        GET /pulls/{n} (these fields are absent from the list payload). That cost
-        is paid only for *yielded* PRs — survivors of the merged-window filter —
-        not for the whole scan. pr.changed_files (single int) is used for giant
-        detection; pr.get_files() would paginate and is avoided.
+        Reads only fields present in the PR list payload (number/title/body/
+        author/merged_at) — NO completion GET fires here. The giant-filter fields
+        (changed_files/additions/deletions) live only in the per-PR completion
+        payload (GET /pulls/{n}); reading them eagerly would charge that GET for
+        every yielded PR, including bots that is_bot rejects for free. They are
+        therefore deferred to RawPR.size() via size_loader, which the Ingester
+        calls only AFTER is_bot (Finding 2 — N+1 paid past the bot filter).
+        pr.get_files() would paginate and is avoided.
         """
+        # Bind pr in the closure default so it captures THIS PR (not a later
+        # loop rebinding). The completion GET fires on first attribute read.
         return RawPR(
             number=pr.number,
             title=pr.title,
@@ -187,10 +192,8 @@ class GitHubConnector:
             merged_at=pr.merged_at,
             repo_full_name=repo_full_name,
             linked_issue=extract_linked_issue(pr.body or ""),
-            files_changed=[],  # list not fetched at traversal; count below
-            additions=pr.additions,
-            deletions=pr.deletions,
-            changed_files=pr.changed_files,  # cheap int for giant-PR filter (INGEST-03)
+            files_changed=[],  # list not fetched at traversal
+            size_loader=lambda p=pr: (p.changed_files, p.additions, p.deletions),
         )
 
     def _backfill_created_asc(

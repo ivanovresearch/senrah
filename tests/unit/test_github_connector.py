@@ -291,11 +291,13 @@ class TestGitHubConnectorListMergedPRs:
         assert raw.merged_at == MERGED_AT
         assert raw.diff is None, "diff must be None during traversal (INGEST-03)"
         assert raw.linked_issue == "#100"
-        assert raw.additions == 10
-        assert raw.deletions == 3
         assert raw.repo_full_name == "owner/repo"
-        # files_changed is [] during traversal; file names fetched via fetch_pr/get_files
-        # For giant detection, use pr.changed_files (int) — not len(files_changed)
+        # Giant-filter fields are DEFERRED (Finding 2 fix): not read eagerly at
+        # traversal (so bots cost no completion GET) — exposed lazily via size().
+        assert raw.additions == 0 and raw.deletions == 0, "eager fields unset on traversal"
+        _changed_files, additions, deletions = raw.size()
+        assert (additions, deletions) == (10, 3)
+        # files_changed list is [] during traversal; the giant count is via size().
 
     @respx.mock
     def test_linked_issue_extracted(self) -> None:

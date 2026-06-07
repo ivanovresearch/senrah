@@ -154,13 +154,17 @@ class Ingester:
                     rate_status = connector.rate_limit_status()  # refresh after wait
 
                 # (2) Pre-fetch filter on cheap metadata (NO diff fetched yet).
+                # is_bot reads author (list-payload, free). Only AFTER it passes
+                # do we call size(), which fires the per-PR completion GET for the
+                # giant check — so a bot costs zero completion GET (Finding 2).
                 if is_bot(raw_pr.author, filters.stop_list):
                     filtered_bot += 1
                     continue
+                changed_files, additions, deletions = raw_pr.size()
                 if is_giant(
-                    raw_pr.changed_files,
-                    raw_pr.additions,
-                    raw_pr.deletions,
+                    changed_files,
+                    additions,
+                    deletions,
                     max_files=filters.max_files,
                     max_lines=filters.max_lines,
                 ):
