@@ -187,9 +187,10 @@ class GitHubConnector:
             merged_at=pr.merged_at,
             repo_full_name=repo_full_name,
             linked_issue=extract_linked_issue(pr.body or ""),
-            files_changed=[],  # not populated here; use pr.changed_files count
+            files_changed=[],  # list not fetched at traversal; count below
             additions=pr.additions,
             deletions=pr.deletions,
+            changed_files=pr.changed_files,  # cheap int for giant-PR filter (INGEST-03)
         )
 
     def _backfill_created_asc(
@@ -323,6 +324,7 @@ class GitHubConnector:
             files_changed=[f.filename for f in pr.get_files()],
             additions=pr.additions,
             deletions=pr.deletions,
+            changed_files=pr.changed_files,
         )
 
     def rate_limit_status(self) -> RateLimitStatus:

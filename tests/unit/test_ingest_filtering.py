@@ -34,7 +34,9 @@ def _make_raw_pr(
     additions: int = 5,
     deletions: int = 2,
     diff: str | None = None,
+    changed_files: int | None = None,
 ) -> RawPR:
+    files = files_changed or ["src/foo.py"]
     return RawPR(
         number=number,
         title=f"PR #{number}",
@@ -44,9 +46,12 @@ def _make_raw_pr(
         merged_at=datetime(2024, 1, number % 28 + 1, tzinfo=timezone.utc),
         repo_full_name="owner/repo",
         linked_issue=None,
-        files_changed=files_changed or ["src/foo.py"],
+        files_changed=files,
         additions=additions,
         deletions=deletions,
+        # The Ingester's giant filter reads the int count, not len(files_changed)
+        # (the real connector yields files_changed=[] at traversal).
+        changed_files=changed_files if changed_files is not None else len(files),
     )
 
 

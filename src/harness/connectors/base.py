@@ -54,6 +54,12 @@ class RawPR:
     files_changed: list[str]
     additions: int
     deletions: int
+    # Cheap changed-file COUNT from the PR metadata (pr.changed_files). Carried
+    # separately from files_changed because the diff-less traversal yields the
+    # count (one int) without the file list (get_files() would paginate). The
+    # Ingester's giant-PR filter (INGEST-03) reads this; files_changed stays []
+    # at traversal time.
+    changed_files: int = 0
 
 
 @dataclass(frozen=True)

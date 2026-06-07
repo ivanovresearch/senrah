@@ -19,28 +19,69 @@ Security:
 
 from __future__ import annotations
 
-import sys
 from typing import Optional
 
 import typer
 
-from harness.config import EnvSettings, YamlConfig, find_config_file, load_yaml_config
+from harness.config import (
+    EnvSettings,
+    Scope,
+    find_config_file,
+    load_yaml_config,
+)
 from harness.connectors.github import GitHubConnector
 from harness.db.pool import connect_sync
 from harness.ingester.ingest import Ingester
+
+
+def _coerce_scope_value(mode: str, value: str) -> object:
+    """Coerce a CLI --scope VALUE string to the type expected per mode."""
+    if mode == "all":
+        return None
+    if mode == "last_n":
+        return int(value)
+    # since_date ("YYYY-MM-DD") and period ("90d") stay as strings
+    return value
+
+
+def _resolve_scope(
+    cli_scope: Optional[tuple[str, str]],
+    repo_cfg: dict,
+    default_scope: Scope,
+) -> Scope:
+    """Scope precedence (D-A3): CLI --scope > per-repo scope > default_scope."""
+    if cli_scope is not None:
+        mode, value = cli_scope
+        return Scope(mode=mode, value=_coerce_scope_value(mode, value))
+    repo_scope = repo_cfg.get("scope")
+    if isinstance(repo_scope, dict) and repo_scope.get("mode"):
+        return Scope(mode=repo_scope["mode"], value=repo_scope.get("value"))
+    return default_scope
 
 
 def ingest_cmd(
     last_n: Optional[int] = typer.Option(
         None,
         "--last-n",
-        help="Fetch exactly N merged PRs (overrides config default_last_n).",
+        help="Fetch exactly N merged PRs (back-compat; maps to a last_n scope).",
         min=1,
     ),
     all_prs: bool = typer.Option(
         False,
         "--all",
-        help="Fetch full PR history (no count limit).",
+        help="Fetch full PR history (maps to an 'all' scope).",
+    ),
+    scope: Optional[tuple[str, str]] = typer.Option(
+        None,
+        "--scope",
+        help="Ingest scope as MODE VALUE (e.g. --scope last_n 200, "
+        "--scope period 90d, --scope since_date 2024-01-01, --scope all -).",
+        metavar="MODE VALUE",
+    ),
+    backfill: bool = typer.Option(
+        False,
+        "--backfill",
+        help="Re-apply the current scope window, ignoring the stored cursor (D-B2).",
     ),
 ) -> None:
     """Ingest merged PRs from the configured GitHub repository.
@@ -48,11 +89,14 @@ def ingest_cmd(
     Reads repository config from harness.yaml (walked up from cwd).
     Secrets (GITHUB_TOKEN, DATABASE_URL) are read from ENV / .env.
 
-    Count flags (D-04):
+    Scope (D-A3, precedence: CLI --scope > per-repo scope > ingest.default_scope):
     \\b
-      --last-n N   fetch exactly N merged PRs
-      --all        fetch all merged PRs (full history)
-      (neither)    use ingest.default_last_n from harness.yaml (default: 100)
+      --scope last_n 200        newest 200 merged PRs
+      --scope period 90d        merged in the last 90 days
+      --scope since_date DATE   merged on/after an ISO date
+      --scope all -             full history
+      --last-n N / --all        back-compat shortcuts (map to a last_n / all scope)
+      --backfill                re-apply the scope window, ignoring the cursor (D-B2)
     """
     # Load ENV secrets (T-02-01: token from ENV only)
     try:
@@ -88,13 +132,16 @@ def ingest_cmd(
         )
         raise typer.Exit(code=1)
 
-    # Resolve last_n from flags / config (D-04)
-    if all_prs:
-        resolved_last_n: int | None = None  # no limit
+    # Build the CLI-level scope override (precedence: --scope > --all > --last-n;
+    # None falls through to per-repo scope / default_scope per repo).
+    if scope is not None:
+        cli_scope: Optional[tuple[str, str]] = scope
+    elif all_prs:
+        cli_scope = ("all", "-")
     elif last_n is not None:
-        resolved_last_n = last_n
+        cli_scope = ("last_n", str(last_n))
     else:
-        resolved_last_n = cfg.default_last_n  # default 100
+        cli_scope = None
 
     # Build connector (composition root — the ONE place concrete connector is created)
     connector = GitHubConnector(env.github_token)
@@ -113,9 +160,12 @@ def ingest_cmd(
                 )
                 continue
 
+            repo_scope = _resolve_scope(cli_scope, repo_cfg, cfg.default_scope)
             typer.echo(
                 f"Ingesting {repo_name} "
-                f"({'all' if resolved_last_n is None else resolved_last_n} PRs)..."
+                f"(scope: {repo_scope.mode}"
+                f"{'' if repo_scope.value is None else f' {repo_scope.value}'}"
+                f"{', backfill' if backfill else ''})..."
             )
             try:
                 count = ingester.run(
@@ -123,7 +173,9 @@ def ingest_cmd(
                     repo_full_name=repo_name,
                     project_name=cfg.project_name or repo_name.split("/")[0],
                     repo_type=repo_type,
-                    last_n=resolved_last_n,
+                    scope=repo_scope,
+                    backfill=backfill,
+                    filters=cfg.filters,
                 )
                 typer.echo(f"Done: {count} PR(s) upserted for {repo_name}.")
             except Exception as exc:
