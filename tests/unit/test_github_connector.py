@@ -219,13 +219,18 @@ class TestGitHubConnectorListMergedPRs:
         assert len(results) == 3
 
     @respx.mock
-    def test_diff_text_populated_from_endpoint(self) -> None:
-        """diff field is populated from the mocked httpx diff endpoint."""
-        expected_diff = "diff --git a/README.md b/README.md\n+new line\n"
-        pr = _make_mock_pr(10, "My PR", "Closes #99", MERGED_AT, DIFF_URL)
+    def test_diff_is_none_during_traversal(self) -> None:
+        """diff field is None during traversal — fetched only via fetch_diff() for survivors.
 
-        respx.get(DIFF_URL).mock(
-            return_value=httpx.Response(200, text=expected_diff)
+        Plan 02 change: list_merged_prs yields cheap metadata (diff=None).
+        The diff is fetched only for PRs that survive bot/giant filtering,
+        via the connector.fetch_diff(repo_full_name, number) method.
+        This structurally guarantees no diff is fetched for excluded PRs (INGEST-03).
+        """
+        pr = _make_mock_pr(10, "My PR", "Closes #99", MERGED_AT, DIFF_URL)
+        # The diff URL route must NOT be called during traversal
+        diff_route = respx.get(DIFF_URL).mock(
+            return_value=httpx.Response(200, text="should-not-be-fetched")
         )
 
         with patch("harness.connectors.github.Github") as MockGithub:
@@ -238,11 +243,22 @@ class TestGitHubConnectorListMergedPRs:
             results = list(connector.list_merged_prs("owner/repo"))
 
         assert len(results) == 1
-        assert results[0].diff == expected_diff
+        assert results[0].diff is None, (
+            "list_merged_prs must yield diff=None; use fetch_diff() for survivors"
+        )
+        assert diff_route.call_count == 0, (
+            "The diff URL endpoint must NOT be called during traversal (INGEST-03)"
+        )
 
     @respx.mock
     def test_raw_pr_fields(self) -> None:
-        """RawPR carries title, body, author, merged_at, files_changed, linked_issue."""
+        """RawPR carries title, body, author, merged_at, linked_issue, diff=None.
+
+        Plan 02 change: files_changed is [] during traversal (file list not
+        populated by get_files() — anti-pattern avoided per RESEARCH.md).
+        The cheap integer count (pr.changed_files) is available for giant detection.
+        diff is None — fetched only for survivors via fetch_diff().
+        """
         pr = _make_mock_pr(
             number=42,
             title="Fix cursor pagination",
@@ -254,6 +270,7 @@ class TestGitHubConnectorListMergedPRs:
             additions=10,
             deletions=3,
         )
+        # No diff URL route should be called during traversal
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
         with patch("harness.connectors.github.Github") as MockGithub:
@@ -272,11 +289,13 @@ class TestGitHubConnectorListMergedPRs:
         assert raw.body == "Closes #100"
         assert raw.author == "jkotas"
         assert raw.merged_at == MERGED_AT
-        assert raw.files_changed == ["src/a.cs", "src/b.cs"]
+        assert raw.diff is None, "diff must be None during traversal (INGEST-03)"
         assert raw.linked_issue == "#100"
         assert raw.additions == 10
         assert raw.deletions == 3
         assert raw.repo_full_name == "owner/repo"
+        # files_changed is [] during traversal; file names fetched via fetch_pr/get_files
+        # For giant detection, use pr.changed_files (int) — not len(files_changed)
 
     @respx.mock
     def test_linked_issue_extracted(self) -> None:
