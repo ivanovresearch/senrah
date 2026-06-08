@@ -1,25 +1,50 @@
 # Production Readiness — Open Gates (Phase 3 ingest)
 
-**Status: NOT production-validated.** Phase 3 passed automated unit verification
-(7/7 must-haves, 231 unit tests), but the unit tests mock the two boundaries that
-matter most in production — the **PostgreSQL transaction** and the **GitHub API**.
-The mechanics below have **never been run on live infrastructure**. They are core
-ingest behaviors, **required before the first real ingest**, not optional polish.
+**Status: PARTIALLY validated on real infra (2026-06-08).** Phase 3 passed automated
+unit verification (7/7 must-haves, 231 unit tests). The unit tests mock the
+**PostgreSQL transaction** and the **GitHub API**; the gates below close that gap.
 
 A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 **not** "verified on live infra". Do not read it as production-ready.
 
+## Validated on real infra (2026-06-08, Docker up, DB loaded with 100 dotnet/efcore PRs)
+
+- **Integration suite (real pgvector Postgres via testcontainers):** `test_resume`
+  (cursor stored after first PR, second run starts after cursor, advance_cursor
+  monotonic), `test_migration_0002`, `test_migrations` all PASS. → Gate #1's core
+  mechanic (atomic cursor + resume) is now validated on a **real database**, not
+  just mocks. 11 other integration tests fail, but only from a pre-existing
+  **test-isolation defect** (session-scoped DB container, no per-test truncation —
+  rows accumulate across tests); each passes in isolation. Unrelated to Phase 3.
+- **`harness repos`** runs against the live efcore DB and lists the repo + scope +
+  (blank) op-state. → OPS-02 validated on real data.
+
+## Real-infra findings (fix before relying on production ingest)
+
+- **MIGRATION DRIFT:** the loaded DB had the 100 PRs but was still at migration
+  **0001** — the op-state columns (cursor_merged_at, …) were missing until
+  `alembic upgrade head` was run by hand (0001→0002). The unit-verified code cannot
+  detect this; any deploy MUST run `alembic upgrade head` before a cursor-based
+  ingest, or `advance_cursor` fails on a real DB.
+- **alembic CLI ignores `.env`:** `alembic.ini` has `sqlalchemy.url = ${DATABASE_URL}`
+  but the alembic CLI does not load `.env` (only pydantic EnvSettings does), so
+  `DATABASE_URL` must be exported in the shell before running alembic. Document this
+  (or add dotenv loading to `alembic/env.py`).
+- **`harness repos` cosmetic:** a repo row that exists but never advanced the cursor
+  shows "-" for the cursor cell, not "(never run)" (which only triggers when there
+  is no repositories row at all). Consider showing "(never run)" when
+  cursor_merged_at is NULL.
+
 ## Gates (in priority order)
 
-### 1. Resumable incremental ingest — DATA-CORRUPTION RISK · gate before the FIRST real ingest
+### 1. Resumable incremental ingest — DATA-CORRUPTION RISK · PARTIALLY validated
 The per-PR `upsert + advance_cursor` runs inside one `conn.transaction()`, and resume
-reads the stored cursor. **If the real psycopg transaction/commit semantics or the
-interrupt path misbehave, the cursor can move ahead of stored data → silently
-skipped PRs, or duplicates.** This is corruption, not degradation. Unit tests mock
-the DB connection, so atomicity and resume-after-interrupt are **unproven on a real
-database**. `tests/integration/test_resume.py` exists but is Docker-gated (blocked).
-**Required: run one real interrupted ingest and confirm the re-run resumes from the
-cursor with no double-fetch and no skip — before trusting any production ingest.**
+reads the stored cursor. **Now validated at the repo layer on a real Postgres**
+(`test_resume.py`: cursor stored after first PR, second run starts after cursor,
+advance_cursor monotonic — all PASS via testcontainers). **Still unproven: a full
+end-to-end `harness ingest` run interrupted mid-stream on real GitHub data**, confirming
+the re-run resumes from the cursor with no double-fetch and no skip. Until that runs,
+treat production ingest as not fully proven.
 
 ### 2. `harness init` live flow + YAML structure preservation
 With a live `GITHUB_TOKEN` and a real repo: token validates (token-free
