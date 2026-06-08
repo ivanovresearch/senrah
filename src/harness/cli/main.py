@@ -27,6 +27,7 @@ if sys.platform == "win32":
 from harness.cli.index import index_cmd
 from harness.cli.ingest import ingest_cmd
 from harness.cli.init import init_cmd
+from harness.cli.repos import repos_cmd
 from harness.cli.search import search_cmd
 from harness.cli.serve import serve_cmd
 
@@ -49,6 +50,9 @@ app.command("search")(search_cmd)
 
 # Serve subcommand (Plan 02-03) — start the MCP server over stdio or network
 app.command("serve")(serve_cmd)
+
+# Repos subcommand (Plan 03-05) — read-only list of repos + scope + op-state
+app.command("repos")(repos_cmd)
 
 
 if __name__ == "__main__":
