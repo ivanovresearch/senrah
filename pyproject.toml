@@ -21,6 +21,10 @@ dependencies = [
     "pyyaml>=6,<7",
     "tenacity>=9.1.4,<10",
     "mcp>=1.27.2,<2",
+    # Comment-preserving round-trip YAML writer for `harness init` (OPS-01).
+    # Read path stays on yaml.safe_load; ruamel is used only on the init write
+    # path. Install gated behind a human legitimacy checkpoint (T-03-SC).
+    "ruamel.yaml>=0.18,<0.19",
 ]
 
 [project.optional-dependencies]

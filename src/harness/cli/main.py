@@ -24,8 +24,9 @@ import typer
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from harness.cli.ingest import ingest_cmd
 from harness.cli.index import index_cmd
+from harness.cli.ingest import ingest_cmd
+from harness.cli.init import init_cmd
 from harness.cli.search import search_cmd
 from harness.cli.serve import serve_cmd
 
@@ -33,6 +34,9 @@ app = typer.Typer(
     help="Harness — semantic PR search for AI coding agents.",
     no_args_is_help=True,
 )
+
+# Init subcommand (Plan 03-04) — bootstrap/extend harness.yaml with validation
+app.command("init")(init_cmd)
 
 # Ingest subcommand (Plan 01-02)
 app.command("ingest")(ingest_cmd)

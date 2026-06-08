@@ -1,8 +1,8 @@
 """
 Unit tests for harness.config.upsert_repo_entry (OPS-01 ruamel YAML writer).
 
-These tests require ruamel.yaml. If not installed, they are marked xfail
-(will be cleared by Plan 04 which gates the ruamel.yaml install).
+ruamel.yaml is installed (Plan 04, after the legitimacy checkpoint), so these
+tests run for real — no xfail/skip.
 
 Covers:
 - upsert_repo_entry merges a new repo into an existing harness.yaml
@@ -14,17 +14,9 @@ Covers:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-# ruamel.yaml is not yet installed — gate these tests behind importorskip.
-# Plan 04 installs ruamel.yaml; at that point the xfail is cleared and
-# these tests should go green.
-ruamel = pytest.importorskip("ruamel.yaml", reason="ruamel.yaml not installed (Plan 04 installs it)")
-
-from harness.config import upsert_repo_entry, _check_for_secrets, Scope, load_yaml_config
-
+from harness.config import Scope, _check_for_secrets, load_yaml_config, upsert_repo_entry
 
 SAMPLE_YAML = """\
 # harness config — keep this comment
@@ -143,7 +135,6 @@ repositories: []
         yaml_path.write_text(yaml_with_secret, encoding="utf-8")
 
         # Directly test that _check_for_secrets catches secret keys
-        import yaml
         secret_raw = {"database_url": "postgresql://secret/db"}
         with pytest.raises(ValueError, match="Secret key"):
             _check_for_secrets(secret_raw, yaml_path)
