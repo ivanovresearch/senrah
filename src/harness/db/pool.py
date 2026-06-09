@@ -45,12 +45,19 @@ async def create_pool(
     return pool
 
 
-def connect_sync(dsn: str) -> psycopg.Connection:
+def connect_sync(dsn: str, *, autocommit: bool = False) -> psycopg.Connection:
     """Open a synchronous psycopg3 connection with pgvector type registration.
 
     Suitable for CLI commands and migration scripts.
     The caller is responsible for closing the connection (use as a context manager).
+
+    autocommit: pass True when the caller drives its own per-unit `conn.transaction()`
+        blocks and needs each to COMMIT durably (e.g. the Ingester's per-PR
+        upsert+advance_cursor — D-B3). With the default autocommit=False, the first
+        statement opens an implicit transaction, so a later `conn.transaction()`
+        becomes a SAVEPOINT (released, not committed) — nothing is durable until the
+        connection closes, and a crash mid-run loses ALL progress (no resume).
     """
-    conn = psycopg.connect(dsn)
+    conn = psycopg.connect(dsn, autocommit=autocommit)
     register_vector(conn)
     return conn

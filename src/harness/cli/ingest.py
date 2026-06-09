@@ -146,8 +146,11 @@ def ingest_cmd(
     # Build connector (composition root — the ONE place concrete connector is created)
     connector = GitHubConnector(env.github_token)
 
-    # Run ingest for each configured repository (D-05: {type, name} addressing)
-    with connect_sync(env.database_url) as conn:
+    # Run ingest for each configured repository (D-05: {type, name} addressing).
+    # autocommit=True so the Ingester's per-PR conn.transaction() COMMITS durably
+    # (D-B3 resume guarantee); otherwise per-PR blocks degrade to savepoints and a
+    # crash loses all progress.
+    with connect_sync(env.database_url, autocommit=True) as conn:
         ingester = Ingester(conn)
         for repo_cfg in cfg.repositories:
             repo_type = repo_cfg.get("type", "github")
