@@ -378,3 +378,31 @@ def test_github_connector_satisfies_connector_protocol() -> None:
         assert callable(connector.list_merged_prs)
         assert callable(connector.fetch_pr)
         assert callable(connector.rate_limit_status)
+
+
+class TestRateLimitStatus:
+    """rate_limit_status must read get_rate_limit().resources.core.
+
+    Regression for the live-only bug: this PyGithub returns a RateLimitOverview
+    whose rates live under .resources (.resources.core), not a bare .core (the
+    older RateLimit return type). The throttle unit tests mock the whole method,
+    so only this test pins the real attribute path.
+    """
+
+    def test_reads_resources_core_not_bare_core(self) -> None:
+        from datetime import datetime, timezone
+
+        reset = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        with patch("harness.connectors.github.Github") as MockGithub:
+            core = MagicMock(remaining=4970, limit=5000, reset=reset)
+            overview = MagicMock()
+            overview.resources.core = core
+            del overview.core  # a revert to .core must raise AttributeError → RED
+            MockGithub.return_value.get_rate_limit.return_value = overview
+
+            conn = GitHubConnector(FAKE_TOKEN)
+            status = conn.rate_limit_status()
+
+        assert status.remaining == 4970
+        assert status.limit == 5000
+        assert status.reset_at == reset

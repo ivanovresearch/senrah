@@ -331,8 +331,14 @@ class GitHubConnector:
         )
 
     def rate_limit_status(self) -> RateLimitStatus:
-        """Return the current rate-limit status for the authenticated user."""
-        rl = self._g.get_rate_limit().core
+        """Return the current rate-limit status for the authenticated user.
+
+        PyGithub's get_rate_limit() returns a RateLimitOverview whose per-resource
+        rates live under .resources (.resources.core), not a bare .core (that was
+        the older RateLimit return type). The unit throttle tests mock this method,
+        so the real attribute path is only exercised against a live token.
+        """
+        rl = self._g.get_rate_limit().resources.core
         return RateLimitStatus(
             remaining=rl.remaining,
             reset_at=rl.reset,
