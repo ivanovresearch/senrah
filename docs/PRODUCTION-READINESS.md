@@ -1,8 +1,15 @@
 # Production Readiness — Open Gates (Phase 3 ingest)
 
-**Status: PARTIALLY validated on real infra (2026-06-08).** Phase 3 passed automated
-unit verification (7/7 must-haves, 231 unit tests). The unit tests mock the
-**PostgreSQL transaction** and the **GitHub API**; the gates below close that gap.
+**Status: BLOCKED on gate #1 (data-loss on resume, proven 2026-06-09).** Phase 3
+passed automated unit verification (7/7 must-haves, 231 unit tests), but live testing
+found resume silently loses ~50% of the window on interruption (see gate #1). Unit
+tests mocked the PostgreSQL transaction and the GitHub API and missed all three live
+bugs (A/B fixed, C is the blocker).
+
+**Phase 4 precondition:** gate #1 (BUG C) MUST be fixed before Phase 4 (tuning).
+Tuning scoring/weights on a corpus that drops half the window on any interruption is
+meaningless — the corpus is unpredictably holey. This is a design change (cursor
+semantics), not a "run it on Docker" item.
 
 A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 **not** "verified on live infra". Do not read it as production-ready.
@@ -37,14 +44,36 @@ A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 
 ## Gates (in priority order)
 
-### 1. Resumable incremental ingest — DATA-CORRUPTION RISK · PARTIALLY validated
-The per-PR `upsert + advance_cursor` runs inside one `conn.transaction()`, and resume
-reads the stored cursor. **Now validated at the repo layer on a real Postgres**
-(`test_resume.py`: cursor stored after first PR, second run starts after cursor,
-advance_cursor monotonic — all PASS via testcontainers). **Still unproven: a full
-end-to-end `harness ingest` run interrupted mid-stream on real GitHub data**, confirming
-the re-run resumes from the cursor with no double-fetch and no skip. Until that runs,
-treat production ingest as not fully proven.
+### 1. Resumable incremental ingest — DATA-LOSS · **BLOCKER (proven 2026-06-09)**
+A real interrupted-and-resumed `harness ingest` against efcore **lost 13 of 27
+window PRs** (silent, permanent). Resume is NOT correct. This GATES Phase 4 (see
+below). Two preconditions were found and fixed first; the third is the real blocker:
+
+- **Fixed (commit `bca12af`)** — `rate_limit_status` crashed the first ingest (BUG A).
+- **Fixed (commit `344c49b`)** — per-PR commits were savepoints, not commits, so a
+  crash rolled back the whole run (BUG B). Now durable: a mid-run kill keeps the
+  committed prefix (S1=14 survived, `cursor == max(stored)`, no bogus rows).
+- **UNFIXED — design (BUG C, the blocker):** `advance_cursor` stores a **GREATEST
+  high-water mark**, not a **contiguous "processed-up-to-here" low-watermark**. The
+  incremental scan commits PRs in `updated`-desc order, so the cursor reaches the
+  newest `merged_at` on the *first* committed PR while ~half the window is still
+  unprocessed. On resume, the window filter `merged_at > cursor − overlap_margin`
+  drops every unprocessed PR older than the last `overlap_margin` (1h) → permanent
+  skip. Measured: |S_clean|=27, after kill+resume |S2|=14, **13 skipped**
+  (`38192 38260 38269 38286 38291 38293 38297 38304 38307 38321 38340 38342 38359`).
+
+**This is the SAME residual hole documented in `03-FINDINGS-traversal.md`, re-assessed:**
+it was logged there as an edge/rare "delayed-visibility" case mitigated by
+`overlap_margin`. That under-scoped it. The real exposure is **~50% of the window on
+*any* mid-run interruption**, because the high-water cursor races ahead of actual
+coverage — not a rare timing edge. Lesson: a documented-but-under-scoped debt is
+still a blocker; "rare" was wrong.
+
+**Root to fix (next session, fresh context):** make the cursor a contiguous
+low-watermark (advance only past a prefix with no unprocessed older-in-window PR
+behind it), OR process the window oldest-first, OR have resume re-scan the full scope
+window ignoring the high-water cursor until caught up. The fix must target the
+cursor *semantics* (high-water → contiguous), not the scan order alone.
 
 ### 2. `harness init` live flow + YAML structure preservation
 With a live `GITHUB_TOKEN` and a real repo: token validates (token-free
