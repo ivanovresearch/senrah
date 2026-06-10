@@ -75,6 +75,39 @@ behind it), OR process the window oldest-first, OR have resume re-scan the full 
 window ignoring the high-water cursor until caught up. The fix must target the
 cursor *semantics* (high-water → contiguous), not the scan order alone.
 
+**RESOLUTION (2026-06-10) — full-scope re-scan + present-in-DB probe (chosen over
+low-watermark).** The low-watermark's only advantage (cheap steady-state on
+*unbounded* history) never materialises here — scopes are bounded (last_n /
+since_date / period) — and its cost is two new classes of silent state-bug
+(bimodal reset-on-completion + freeze-on-error) of the same family as A/B/C. So:
+
+- **Cursor semantics (now, one line):** `cursor_merged_at` is a **diagnostic
+  high-water mark** surfaced by `harness repos`; it bounds **nothing**. Resume
+  correctness is owned entirely by re-scanning the configured scope window every
+  run + skipping PRs already present in `pull_requests`. (Reading the cursor as a
+  "processed-up-to-here" boundary was the root of C; nothing in the read path may.)
+- **Traversal:** bounded by the scope `since` (config), never by the cursor. Every
+  run re-scans the scope window (updated-desc, break at `updated_at < since`).
+- **Probe:** `PRRepo.exists(repository_id, number)` immediately before `fetch_diff`
+  — strictly *present-in-DB*, never a cursor compare. An already-ingested PR costs
+  zero diff fetch; a PR missed on a prior run (interrupt OR per-PR error isolation)
+  is absent → re-fetched. This recovers errored PRs for free — **no separate
+  freeze-on-error machinery**.
+- **`overlap_margin`: DEAD — removed.** Its only job was re-yielding a drift-skipped
+  PR for the idempotent upsert to dedup (at the cost of a repeat diff fetch every
+  run). The full scope re-scan re-encounters any such PR, and the probe makes the
+  re-encounter free. Removed from the connector, the Ingester, config, and the
+  `IngestFilterConfig` knob. (It was a fixed-width masking layer — exactly the kind
+  we already rejected as a non-fix for C.)
+- **`--backfill`:** now inert for traversal (every run already re-scans the scope);
+  retained for CLI compatibility — use scope `all` for a deep re-enumeration.
+
+Proven by two real-DB tests (testcontainer, autocommit as in `cli/ingest`, real
+traversal + advance_cursor, only `fetch_diff`/`rate_limit_status` stubbed), each
+RED before the fix and GREEN after:
+`tests/integration/test_resume.py::TestResumeDataLossBugC` (BUG C) and
+`::TestResumeRecoversErroredPR` (errored-PR recovery).
+
 ### 2. `harness init` live flow + YAML structure preservation
 With a live `GITHUB_TOKEN` and a real repo: token validates (token-free
 accept/reject), the entry is merged into `harness.yaml` **without** destroying

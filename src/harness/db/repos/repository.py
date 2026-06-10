@@ -100,12 +100,16 @@ class RepositoryRepo:
         merged_at: object,
         number: int,
     ) -> None:
-        """Advance the repository's high-water cursor atomically (GREATEST semantics).
+        """Advance the repository's DIAGNOSTIC high-water mark (GREATEST semantics).
 
-        Uses GREATEST(cursor_merged_at, %(merged_at)s) so that an out-of-created-order
-        older merge cannot move the cursor backward (D-B3 / T-03-04 / Pattern 4).
+        Uses GREATEST(cursor_merged_at, %(merged_at)s) so the mark never moves
+        backward. This is observability ONLY (surfaced by `harness repos`): it is
+        NOT read to bound traversal or decide what to fetch. Resume correctness is
+        owned by the Ingester's scope re-scan + present-in-DB probe (gate #1 / BUG
+        C fix) — treating this cursor as a "processed-up-to-here" boundary was the
+        root cause of C, so nothing in the read path may depend on it.
 
-        MUST be called inside the Ingester's per-PR transaction block. Never calls
+        Called inside the Ingester's per-PR upsert transaction. Never calls
         conn.commit() — the Ingester owns commit/rollback.
         """
         self._conn.execute(

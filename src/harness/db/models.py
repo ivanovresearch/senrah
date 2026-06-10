@@ -60,14 +60,17 @@ class Skill:
 
 @dataclass
 class RepoOpState:
-    """Operational state for a repository (cursor + last-run status).
+    """Operational state for a repository (diagnostic cursor + last-run status).
 
     Fields mirror the 0002 migration columns added to the repositories table
     (D-A1 / D-B2 / D-B3). All fields are Optional because a repository row
     can exist before any ingest run has been completed.
 
-    cursor_merged_at: high-water merged_at timestamp (GREATEST semantics)
-    cursor_number: PR number at the cursor position (tiebreak for same merged_at)
+    cursor_merged_at: DIAGNOSTIC high-water merged_at (GREATEST semantics),
+        surfaced by `harness repos`. It does NOT bound traversal or gate fetches —
+        resume correctness is owned by the scope re-scan + present-in-DB probe
+        (gate #1 / BUG C fix). Reading it as a processing boundary is what caused C.
+    cursor_number: PR number at the high-water position (diagnostic tiebreak)
     last_run_at: timestamp of the most recent completed ingest run
     last_run_status: "success" | "error" | None
     last_error: last per-run error message, if any

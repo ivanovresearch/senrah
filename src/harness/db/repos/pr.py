@@ -112,6 +112,33 @@ class PRRepo:
         return int(row[0])
 
     # ------------------------------------------------------------------
+    # exists — present-in-DB probe for the Ingester (gate #1 / BUG C fix)
+    # ------------------------------------------------------------------
+
+    def exists(self, repository_id: int, number: int) -> bool:
+        """Return True if (repository_id, number) is already in pull_requests.
+
+        The Ingester calls this immediately before fetch_diff so an already-
+        ingested PR costs ZERO diff fetch on a scope re-scan. The criterion is
+        strictly "present in the DB" — NOT a comparison against any cursor. That
+        is what makes resume correct AND recovers errored PRs for free: a PR that
+        was skipped on a prior run (interrupt or per-PR error isolation) is absent
+        here, so the probe reports "missing" and it gets re-fetched (gate #1).
+
+        Cheap: a covered lookup on the (repository_id, number) unique index.
+        """
+        row = self._conn.execute(
+            """
+            SELECT 1
+            FROM pull_requests
+            WHERE repository_id = %(repository_id)s
+              AND number = %(number)s
+            """,
+            {"repository_id": repository_id, "number": number},
+        ).fetchone()
+        return row is not None
+
+    # ------------------------------------------------------------------
     # unindexed_prs — read path for Indexer (Plan 01-03)
     # ------------------------------------------------------------------
 

@@ -9,14 +9,25 @@ Forward-pass responsibilities (Plan 03 — INGEST-03/04/05/06):
 2. Resolve the scope window lower-bound (resolve_since); for last_n use the
    connector's list_recent_merged_meta pre-pass. Resolve the resume cursor from
    op-state (skipped when --backfill re-applies the scope window).
-3. Stream list_merged_prs (diff=None metadata only). For each PR:
+3. Stream list_merged_prs (diff=None metadata only) over the configured SCOPE
+   window — never bounded by a stored cursor (gate #1 / BUG C fix). For each PR:
    - proactive rate-limit throttle (pause when remaining < floor),
    - bot/giant filter on cheap metadata BEFORE any diff fetch (no diff fetched
      for excluded PRs — INGEST-03 structural guarantee),
+   - present-in-DB probe (PRRepo.exists): skip PRs already ingested so a scope
+     re-scan re-fetches ZERO diffs for them (this is what makes re-scan cheap),
    - fetch the diff for survivors via connector.fetch_diff,
-   - upsert + advance_cursor in ONE transaction (D-B3 atomicity),
+   - upsert in ONE transaction (advance_cursor updates a DIAGNOSTIC high-water
+     only — see note below; it is NOT read to bound traversal),
    - per-PR error isolation: log '#N: <err>' to stderr and continue.
 4. Record last-run status and emit a per-run filtered-count line to stderr.
+
+Resume model (gate #1 / BUG C): correctness comes from re-scanning the scope
+window every run + the present-in-DB probe — NOT from the cursor. A PR missed on
+a prior run (interrupted before it, or dropped into per-PR error isolation) is
+absent from the DB, so the next run's scope scan re-encounters it and the probe
+reports "missing" → it is back-filled. cursor_merged_at is a diagnostic high-water
+mark surfaced by `harness repos`; it bounds nothing.
 
 Boundary constraints (STATE.md):
 - Imports connector ONLY as ConnectorProtocol — no concrete GitHubConnector.
@@ -27,12 +38,12 @@ from __future__ import annotations
 
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import psycopg
 
 from harness.config import IngestFilterConfig, Scope, resolve_since
-from harness.connectors.base import ConnectorProtocol, PRCursor
+from harness.connectors.base import ConnectorProtocol
 from harness.db.models import Project, PullRequest, Repository
 from harness.db.repos.pr import PRRepo
 from harness.db.repos.project import ProjectRepo
@@ -81,8 +92,9 @@ class Ingester:
             last_n: Legacy count bound used when ``scope`` is None.
             scope: Per-repo / default ingest scope (D-A3). When mode == "last_n"
                 the window lower-bound is resolved from a connector pre-pass.
-            backfill: Re-apply the current scope window, ignoring the stored
-                cursor (D-B2 forward-only deepen).
+            backfill: Inert for traversal (retained for CLI compatibility). Every
+                run already re-scans the configured scope window; use scope "all"
+                for a deep re-enumeration. (Historically: ignore the stored cursor.)
             filters: Bot/giant/throttle knobs (defaults applied when None).
 
         Returns:
@@ -104,35 +116,22 @@ class Ingester:
         )
         repository_id: int = repository.id  # type: ignore[assignment]
 
-        # ---- Resolve resume cursor from op-state (skipped under --backfill) ----
-        op_state = repository_repo.get_op_state(project.id, repo_full_name)  # type: ignore[arg-type]
-        cursor: PRCursor | None = None
-        if (
-            not backfill
-            and op_state is not None
-            and op_state.cursor_merged_at is not None
-        ):
-            cursor = PRCursor(
-                merged_at=op_state.cursor_merged_at,
-                number=op_state.cursor_number or 0,
-            )
-
-        # ---- Resolve the scope-window lower bound (Pattern 3) ----
+        # ---- Resolve the scope-window lower bound from config (Pattern 3) ----
+        # The stored cursor is NOT read to bound traversal (gate #1 / BUG C): every
+        # run re-scans the configured scope window. The `backfill` flag is now inert
+        # for traversal — re-scan is unconditional — and is retained only for CLI
+        # compatibility (use scope "all" for a deep re-enumeration).
+        _ = backfill
         since, effective_last_n = self._resolve_window(
             connector, repo_full_name, scope, last_n
         )
-
-        # Incremental runs apply the overlap re-yield window (Design B, Plan 02);
-        # the connector consumes it. Derivation is the tunable floor for now.
-        overlap_margin: timedelta | None = None
-        if cursor is not None:
-            overlap_margin = timedelta(seconds=filters.overlap_margin_seconds)
 
         # ---- Forward pass ----
         upserted = 0
         filtered_bot = 0
         filtered_giant = 0
         filtered_empty = 0
+        skipped_present = 0  # already in DB (probe) — re-scan cost avoided
         status = "success"
         last_error: str | None = None
         rate_status = None
@@ -141,9 +140,7 @@ class Ingester:
             stream = connector.list_merged_prs(
                 repo_full_name,
                 since=since,
-                cursor=cursor,
                 last_n=effective_last_n,
-                overlap_margin=overlap_margin,
             )
             for index, raw_pr in enumerate(stream):
                 # (1) Proactive throttle — refresh status every K PRs.
@@ -171,7 +168,16 @@ class Ingester:
                     filtered_giant += 1
                     continue
 
-                # (3) Survivor: fetch the diff (the ONLY diff-fetch call site).
+                # (3) Present-in-DB probe (gate #1 / BUG C): skip PRs already in
+                # pull_requests so a scope re-scan fetches ZERO diffs for them.
+                # Criterion is strictly "present in DB" — never a cursor compare —
+                # so a PR missed on a prior run (interrupt or per-PR error) is
+                # absent here and gets re-fetched.
+                if pr_repo.exists(repository_id, raw_pr.number):
+                    skipped_present += 1
+                    continue
+
+                # (4) Survivor: fetch the diff (the ONLY diff-fetch call site).
                 try:
                     diff = connector.fetch_diff(repo_full_name, raw_pr.number)
                     if not diff:
@@ -188,7 +194,10 @@ class Ingester:
                         linked_issue=raw_pr.linked_issue,
                         files_changed=raw_pr.files_changed,
                     )
-                    # (4) Atomic: upsert + advance_cursor in one transaction (D-B3).
+                    # (5) Atomic upsert. advance_cursor here updates a DIAGNOSTIC
+                    # high-water mark only (surfaced by `harness repos`); it does
+                    # NOT bound traversal or gate fetches — resume correctness is
+                    # owned by the scope re-scan + the present-in-DB probe above.
                     with self._conn.transaction():
                         pr_repo.upsert(pr)
                         repository_repo.advance_cursor(
@@ -198,8 +207,9 @@ class Ingester:
                         )
                     upserted += 1
                 except Exception as exc:
-                    # Per-PR isolation: the transaction rolled back (cursor intact);
-                    # log and continue (INGEST-05).
+                    # Per-PR isolation: the transaction rolled back; the PR stays
+                    # absent from the DB, so the next scope re-scan back-fills it
+                    # via the probe. Log and continue (INGEST-05).
                     print(f"[ingester] #{raw_pr.number}: {exc}", file=sys.stderr)
 
                 if filters.inter_fetch_delay > 0:
@@ -217,6 +227,7 @@ class Ingester:
             )
             print(
                 f"[ingester] {repo_full_name}: {upserted} upserted, "
+                f"{skipped_present} already-present, "
                 f"filtered {filtered_bot} bot / {filtered_giant} giant / "
                 f"{filtered_empty} empty-diff",
                 file=sys.stderr,

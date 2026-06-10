@@ -25,7 +25,6 @@ import httpx
 
 from harness.connectors.base import (
     ConnectorProtocol,
-    PRCursor,
     RateLimitStatus,
     RawPR,
     extract_linked_issue,

@@ -24,12 +24,12 @@ Two cases, deliberately separated:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from harness.connectors.base import PRCursor, RateLimitStatus
+from harness.connectors.base import RateLimitStatus
 
 FAKE_TOKEN = "ghp_fake_incremental_traversal_token_12345"
 UTC = timezone.utc
@@ -61,10 +61,10 @@ class TestBackDatingCorrectness:
     """Incremental traversal must catch back-dated merges and skip re-touched old PRs."""
 
     def test_backdated_merge_yielded_retouched_old_skipped(self) -> None:
+        # `since` is the scope lower bound (no cursor — gate #1 / BUG C fix).
         cursor_merged = datetime(2024, 5, 1, tzinfo=UTC)
-        cursor = PRCursor(merged_at=cursor_merged, number=500)
 
-        # Back-dated: created long ago, merged AFTER the cursor → must be yielded.
+        # Back-dated: created long ago, merged AFTER `since` → must be yielded.
         backdated = _mock_pr(
             42,
             merged_at=datetime(2024, 5, 3, tzinfo=UTC),
@@ -97,12 +97,11 @@ class TestBackDatingCorrectness:
             MockGithub.return_value.get_repo.return_value = mock_repo
 
             conn = GitHubConnector(FAKE_TOKEN)
-            # margin defaults to 0; this case does not depend on the overlap window
-            results = list(conn.list_merged_prs("owner/repo", cursor=cursor))
+            results = list(conn.list_merged_prs("owner/repo", since=cursor_merged))
 
         numbers = [r.number for r in results]
-        assert 42 in numbers, "back-dated merge (above cursor) must be yielded"
-        assert 7 not in numbers, "re-touched already-ingested PR must NOT be yielded"
+        assert 42 in numbers, "back-dated merge (above `since`) must be yielded"
+        assert 7 not in numbers, "PR merged below `since` must NOT be yielded"
         assert 3 not in numbers, "old untouched PR must NOT be yielded"
 
 
@@ -209,10 +208,10 @@ class TestIncrementalEfficiency:
     """
 
     def test_incremental_stops_at_cursor_window(self, fake_api) -> None:
+        # `since` is the scope lower bound that bounds the updated-desc scan.
         cursor_merged = datetime(2024, 5, 1, tzinfo=UTC)
-        cursor = PRCursor(merged_at=cursor_merged, number=900)
 
-        # Page 1: newest by updated_at, merged ABOVE the cursor → the real delta.
+        # Page 1: newest by updated_at, merged ABOVE `since` → the real delta.
         page1 = [
             _summary(1001, merged_at=datetime(2024, 5, 4, tzinfo=UTC),
                      updated_at=datetime(2024, 5, 4, tzinfo=UTC)),
@@ -232,11 +231,11 @@ class TestIncrementalEfficiency:
         from harness.connectors.github import GitHubConnector
 
         conn = GitHubConnector(FAKE_TOKEN)
-        results = list(conn.list_merged_prs("owner/repo", cursor=cursor))
+        results = list(conn.list_merged_prs("owner/repo", since=cursor_merged))
 
         nums = sorted(r.number for r in results)
-        # Only the two above-cursor PRs are yielded.
-        assert nums == [1000, 1001], f"expected the cursor-window delta, got {nums}"
+        # Only the two above-`since` PRs are yielded.
+        assert nums == [1000, 1001], f"expected the scope-window delta, got {nums}"
         # Efficiency: must NOT paginate the whole history. New code reads page 1,
         # peeks page 2 to discover the break → at most 2 list GETs. Current
         # created-asc code reads all 4 pages → FAILS here (this is the RED gate).
@@ -267,14 +266,13 @@ class TestIncrementalEfficiency:
         RED on the old created-asc code: it walks all 4 pages (list_gets == 4).
         """
         cursor_merged = datetime(2024, 5, 1, tzinfo=UTC)
-        cursor = PRCursor(merged_at=cursor_merged, number=900)
 
         # Page 1 (updated-desc): the back-dated PR appears first because its
         # updated_at is the most recent, even though it was created in 2022 and
-        # merged only just above the cursor.
+        # merged only just above `since`.
         backdated = _summary(
             1002,
-            merged_at=datetime(2024, 5, 2, tzinfo=UTC),    # just above cursor
+            merged_at=datetime(2024, 5, 2, tzinfo=UTC),    # just above `since`
             updated_at=datetime(2024, 5, 10, tzinfo=UTC),  # latest activity
             created_at=datetime(2022, 3, 1, tzinfo=UTC),   # long-lived branch
         )
@@ -293,15 +291,15 @@ class TestIncrementalEfficiency:
         from harness.connectors.github import GitHubConnector
 
         conn = GitHubConnector(FAKE_TOKEN)
-        results = list(conn.list_merged_prs("owner/repo", cursor=cursor))
+        results = list(conn.list_merged_prs("owner/repo", since=cursor_merged))
 
         nums = sorted(r.number for r in results)
         # (a) the back-dated PR is yielded
-        assert 1002 in nums, "back-dated merge (above cursor) must be yielded"
+        assert 1002 in nums, "back-dated merge (above `since`) must be yielded"
         assert nums == [1001, 1002], f"unexpected yield set {nums}"
         # (b) the traversal did NOT go full-scan
         assert api.list_gets <= 2, (
-            f"scan paginated {api.list_gets} pages — must stop at the cursor "
+            f"scan paginated {api.list_gets} pages — must stop at the scope "
             "window even with a back-dated PR present"
         )
         # Deferral (Finding 2 fix): no completion GET during traversal itself.
@@ -358,65 +356,46 @@ class TestRecentMergedMetaEfficiency:
         assert api.completion_gets == 0, "meta scan must fetch no per-PR completion"
 
 
-class TestOverlapMarginWindow:
-    """overlap_margin re-yield window ARITHMETIC (mocked; NOT margin derivation,
-    which is Plan 03). Proves the (cursor-margin, cursor] window is what causes a
-    just-below-cursor PR to be re-yielded — by checking the same input flips to
-    NOT-yielded when margin is 0.
+class TestScopeLowerBoundWindow:
+    """The scope lower bound (`since`) — NOT a cursor/overlap window — is what
+    decides yield/skip. A PR merged below `since` is never yielded; a PR merged
+    at/above `since` is. (overlap_margin was removed: the full scope re-scan +
+    present-in-DB probe subsume the old drift re-yield window — gate #1 / BUG C.)
     """
 
-    def test_margin_reyields_window_pr_and_zero_does_not(self) -> None:
-        T = datetime(2024, 5, 10, tzinfo=UTC)
-        cursor = PRCursor(merged_at=T, number=900)
-        margin = timedelta(days=2)  # re-yield window = (May 8, May 10]
+    def test_since_is_the_inclusive_lower_bound(self) -> None:
+        since = datetime(2024, 5, 8, tzinfo=UTC)
 
-        # In-window: merged just below the cursor but inside (T-margin, T];
-        # updated recently (above the break bound).
-        window_pr = _mock_pr(
+        # At/above `since` → yielded (merged May 9).
+        in_scope = _mock_pr(
             50,
             merged_at=datetime(2024, 5, 9, tzinfo=UTC),
             updated_at=datetime(2024, 5, 20, tzinfo=UTC),
             created_at=datetime(2023, 1, 1, tzinfo=UTC),
         )
-        # Control: merged at/below T-margin → outside the window, must never yield.
-        control_pr = _mock_pr(
+        # Below `since` (merged May 7) → never yielded, even though re-touched.
+        below_scope = _mock_pr(
             51,
             merged_at=datetime(2024, 5, 7, tzinfo=UTC),
             updated_at=datetime(2024, 5, 21, tzinfo=UTC),
             created_at=datetime(2023, 1, 1, tzinfo=UTC),
         )
-        ordered = [control_pr, window_pr]  # updated-desc
+        ordered = [below_scope, in_scope]  # updated-desc
 
-        def run(margin_arg):
-            with patch("harness.connectors.github.Github") as MockGithub:
-                from harness.connectors.github import GitHubConnector
+        with patch("harness.connectors.github.Github") as MockGithub:
+            from harness.connectors.github import GitHubConnector
 
-                mock_repo = MagicMock()
-                mock_repo.get_pulls.return_value = ordered
-                MockGithub.return_value.get_repo.return_value = mock_repo
-                conn = GitHubConnector(FAKE_TOKEN)
-                return [
-                    r.number
-                    for r in conn.list_merged_prs(
-                        "owner/repo", cursor=cursor, overlap_margin=margin_arg
-                    )
-                ]
+            mock_repo = MagicMock()
+            mock_repo.get_pulls.return_value = ordered
+            MockGithub.return_value.get_repo.return_value = mock_repo
+            conn = GitHubConnector(FAKE_TOKEN)
+            nums = [
+                r.number
+                for r in conn.list_merged_prs("owner/repo", since=since)
+            ]
 
-        # margin > 0: the in-window PR is re-yielded; the out-of-window one is not.
-        with_margin = run(margin)
-        assert 50 in with_margin, (
-            "margin>0 must re-yield the PR merged within (T-margin, T]"
-        )
-        assert 51 not in with_margin, (
-            "PR merged at/below T-margin must NOT be yielded"
-        )
-
-        # margin == 0: the SAME PR must NOT be yielded — proving the yield was
-        # caused by the margin window, not by anything else.
-        zero_margin = run(timedelta(0))
-        assert 50 not in zero_margin, (
-            "with margin=0 the in-window PR must NOT be yielded"
-        )
+        assert 50 in nums, "PR merged at/above `since` must be yielded"
+        assert 51 not in nums, "PR merged below `since` must NOT be yielded"
 
 
 class TestBotFilterCompletionCost:

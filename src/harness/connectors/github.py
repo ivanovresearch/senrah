@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import heapq
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Iterator
 
 import httpx
@@ -37,7 +37,6 @@ from tenacity import (
 )
 
 from harness.connectors.base import (
-    PRCursor,
     PRMeta,
     RateLimitStatus,
     RawPR,
@@ -87,11 +86,13 @@ class GitHubConnector:
     diff fetch.
 
     Traversal design:
-    - list_merged_prs uses created-ascending spine (INGEST-05 Pattern 1):
-      stable, fully-paginable enumeration; skips unmerged and pre-window PRs;
-      yields cheap metadata (diff=None) for pre-fetch filter (INGEST-03).
+    - list_merged_prs traverses the configured scope window (bounded by `since`,
+      NEVER by a stored cursor): created-asc spine when unbounded, else an
+      updated-desc scan that breaks at `since`. Skips unmerged/pre-window PRs;
+      yields cheap metadata (diff=None) for the pre-fetch filter (INGEST-03).
+      Every run re-scans the scope so a previously-missed PR is re-encountered.
     - fetch_diff is the single survivor-only diff path; called by the Ingester
-      only for PRs that survive bot/giant filtering.
+      only for PRs that survive bot/giant filtering AND are not already in the DB.
     - list_recent_merged_meta provides the newest-N window lower-bound for
       last_n scope resolution (RESEARCH Pattern 3).
     """
@@ -147,27 +148,26 @@ class GitHubConnector:
         repo_full_name: str,
         *,
         since: datetime | None = None,
-        cursor: PRCursor | None = None,
         last_n: int | None = None,
-        overlap_margin: timedelta | None = None,
     ) -> Iterator[RawPR]:
-        """Yield merged PRs for the given repository (diff=None — cheap metadata).
+        """Yield merged PRs for the repository's scope window (diff=None metadata).
 
-        Two modes (RESEARCH Pattern 1, Design B):
-        - Backfill (cursor is None): created-ascending forward spine. Stable,
-          fully-paginable; the correct one-time enumeration of repo history.
-        - Incremental (cursor set): updated-descending scan with an early break at
-          the cursor window — does NOT re-walk the whole history every run.
+        Traversal is bounded by the configured scope (``since``) ONLY — never by a
+        stored cursor. Every run re-scans the whole scope window so a PR missed on
+        a prior run (interrupted, or dropped into per-PR error isolation) is
+        re-encountered and back-filled; the Ingester's present-in-DB probe keeps
+        that cheap (gate #1 / BUG C fix).
+
+        - since is None: created-ascending forward spine (unbounded enumeration).
+        - since is set: updated-descending scan, break at updated_at < since.
 
         See ConnectorProtocol.list_merged_prs for the full contract.
         """
         repo = self._g.get_repo(repo_full_name)
-        if cursor is None:
-            yield from self._backfill_created_asc(repo, repo_full_name, since, last_n)
+        if since is None:
+            yield from self._backfill_created_asc(repo, repo_full_name, None, last_n)
         else:
-            yield from self._incremental_updated_desc(
-                repo, repo_full_name, cursor, since, last_n, overlap_margin
-            )
+            yield from self._scope_updated_desc(repo, repo_full_name, since, last_n)
 
     def _raw_meta(self, pr, repo_full_name: str) -> RawPR:  # type: ignore[no-untyped-def]
         """Build a diff-less RawPR from a PR's CHEAP list-payload metadata only.
@@ -212,41 +212,35 @@ class GitHubConnector:
             if last_n is not None and count >= last_n:
                 break
 
-    def _incremental_updated_desc(
+    def _scope_updated_desc(
         self,
         repo,
         repo_full_name: str,
-        cursor: PRCursor,
-        since: datetime | None,
+        since: datetime,
         last_n: int | None,
-        overlap_margin: timedelta | None,
     ) -> Iterator[RawPR]:  # type: ignore[no-untyped-def]
-        """Steady-state catch-up: updated-desc scan with early break (Design B).
+        """Scope re-scan: updated-desc scan bounded by the scope lower bound.
 
-        Invariant: a merge bumps updated_at, so updated_at >= merged_at. Any PR
-        merged after the cursor therefore has updated_at > bound and is visited
-        before the break. The scan stops once updated_at < bound instead of
+        Invariant: a merge bumps updated_at, so updated_at >= merged_at. Every PR
+        with merged_at >= since therefore has updated_at >= since and is visited
+        before the break — the scan covers the full scope window without
         paginating the whole history.
 
-        bound = cursor.merged_at - overlap_margin. The (bound, cursor] overlap is
-        re-yielded so a PR transiently skipped by updated-order pagination drift is
-        recovered next run (idempotent upsert dedups). Residual hole: a merge whose
-        visibility lags by more than overlap_margin can still be missed.
+        The bound is the SCOPE `since`, NOT a stored cursor: the whole scope is
+        re-scanned every run, so a PR missed on a prior run (interrupted before it,
+        or dropped into per-PR error isolation) is re-yielded here and the
+        Ingester's present-in-DB probe back-fills it (gate #1 / BUG C fix). No
+        overlap_margin / re-yield window is needed — the full re-scan subsumes it.
         """
-        margin = overlap_margin or timedelta(0)
-        bound = cursor.merged_at - margin
-        # Clamp the re-yield window to the scope lower bound when one is given
-        # (forward-only: cursor >= since, so this only trims the overlap tail).
-        lower = bound if since is None else max(bound, since)
         count = 0
         for pr in repo.get_pulls(state="closed", sort="updated", direction="desc"):
             updated_at = pr.updated_at
-            if updated_at is not None and updated_at < bound:
-                break  # updated-desc: nothing past here can be a merge above cursor
+            if updated_at is not None and updated_at < since:
+                break  # updated-desc: nothing past here can have merged_at >= since
             if pr.merged_at is None:
                 continue  # updated for a non-merge reason (comment/label) or open
-            if pr.merged_at <= lower:
-                continue  # at/below the high-water mark — already ingested
+            if pr.merged_at < since:
+                continue  # below the scope window lower bound
             yield self._raw_meta(pr, repo_full_name)
             count += 1
             if last_n is not None and count >= last_n:

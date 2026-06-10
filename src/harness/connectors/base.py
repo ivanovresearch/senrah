@@ -1,5 +1,5 @@
 """
-harness.connectors.base — ConnectorProtocol, RawPR, PRCursor, PRMeta,
+harness.connectors.base — ConnectorProtocol, RawPR, PRMeta,
 RateLimitStatus, and extract_linked_issue.
 
 The ConnectorProtocol is the core extensibility seam:
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Callable, Iterator, Protocol
 
 # ---------------------------------------------------------------------------
@@ -87,19 +87,6 @@ class RawPR:
         if self.size_loader is not None:
             return self.size_loader()
         return (self.changed_files, self.additions, self.deletions)
-
-
-@dataclass(frozen=True)
-class PRCursor:
-    """Pagination cursor for list_merged_prs.
-
-    Phase 1: cursor is accepted but ignored (since_date is Phase 3 per D-04).
-    The tiebreak field is included now so Phase 3 can use it without a dataclass
-    change.
-    """
-
-    merged_at: datetime
-    number: int  # tiebreak for same-second merges
 
 
 @dataclass(frozen=True)
@@ -179,27 +166,26 @@ class ConnectorProtocol(Protocol):
         repo_full_name: str,
         *,
         since: datetime | None = None,
-        cursor: PRCursor | None = None,
         last_n: int | None = None,
-        overlap_margin: timedelta | None = None,
     ) -> Iterator[RawPR]:
-        """Yield merged PRs for the given repository.
+        """Yield merged PRs for the given repository's scope window.
 
-        Two modes, selected by whether a cursor is supplied (RESEARCH Pattern 1,
-        Design B — supersedes the created-asc full-scan accepted "at MVP"):
+        Two modes, selected by whether a scope lower bound (``since``) is given.
+        Crucially, traversal is bounded ONLY by the configured scope — never by a
+        stored cursor. Every run re-scans the whole scope window; the Ingester's
+        present-in-DB probe makes that cheap (no diff is re-fetched for PRs already
+        ingested). This is what makes interrupt/resume correct: a PR missed on a
+        previous run (interrupted before it, or dropped into per-PR error
+        isolation) is simply re-encountered by the next scope scan and back-filled
+        (gate #1 / BUG C fix — see docs/PRODUCTION-READINESS.md).
 
-        - Backfill (cursor is None): created-ascending forward spine. Stable and
-          fully-paginable; the correct one-time enumeration of repo history.
-        - Incremental (cursor set): updated-descending scan that BREAKS as soon as
-          updated_at < (cursor.merged_at - overlap_margin). A merge bumps
-          updated_at (updated_at >= merged_at), so no PR merged after the cursor
-          is missed, and the scan stops at the cursor window instead of walking
-          the whole history every run. Yields merged PRs with
-          merged_at > (cursor.merged_at - overlap_margin); the overlap window is
-          re-yielded so any PR transiently skipped by updated-order pagination
-          drift is recovered next run (idempotent upsert dedups). Residual hole:
-          a merge whose visibility lags the cursor by more than overlap_margin can
-          still be missed — documented in RESEARCH Pattern 1.
+        - since is None: created-ascending forward spine. Stable, fully-paginable;
+          the correct enumeration of (unbounded) repo history.
+        - since is set: updated-descending scan that BREAKS as soon as
+          updated_at < since. A merge bumps updated_at (updated_at >= merged_at),
+          so every PR with merged_at >= since has updated_at >= since and is
+          visited before the break — the scan covers the full scope window without
+          walking the whole history. Yields merged PRs with merged_at >= since.
 
         Yields cheap PR metadata with diff=None — no diff is fetched during
         traversal; the diff is fetched only for survivors via fetch_diff().
@@ -207,12 +193,8 @@ class ConnectorProtocol(Protocol):
         Args:
             repo_full_name: "owner/repo" string.
             since: Scope-window lower bound; skip PRs with merged_at < since.
-            cursor: When given, selects incremental mode and supplies the
-                    merged_at high-water mark.
+                   None selects the created-asc backfill (unbounded enumeration).
             last_n: Stop after yielding this many merged PRs.  None = no limit.
-            overlap_margin: Re-yield/break safety window for incremental mode
-                    (drift defence). Policy (derive from prior run duration) lives
-                    in the Ingester; the connector only applies it. None = 0.
         """
         ...
 

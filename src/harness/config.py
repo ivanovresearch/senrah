@@ -137,11 +137,6 @@ class IngestFilterConfig:
     max_lines: int = 5000
     rate_limit_floor: int = 100
     inter_fetch_delay: float = 0.0
-    # Incremental-traversal re-yield/break safety window (Design B, Plan 02).
-    # The connector applies it; this is the tunable floor. Full run-duration-based
-    # derivation (max(floor, last_run_duration × factor)) is deferred — it needs a
-    # persisted run-duration column (see 03-FINDINGS-traversal.md).
-    overlap_margin_seconds: int = 3600
 
 
 @dataclass
@@ -279,7 +274,6 @@ def load_yaml_config(path: Path) -> YamlConfig:
         max_lines=ingest_block.get("max_lines", 5000),
         rate_limit_floor=ingest_block.get("rate_limit_floor", 100),
         inter_fetch_delay=float(ingest_block.get("inter_fetch_delay", 0.0)),
-        overlap_margin_seconds=int(ingest_block.get("overlap_margin_seconds", 3600)),
     )
 
     # Parse embed block

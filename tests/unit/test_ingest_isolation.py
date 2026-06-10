@@ -78,6 +78,7 @@ class TestPerPRErrorIsolation:
 
         with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.side_effect = mock_pr_upsert
+            MockPRRepo.return_value.exists.return_value = False  # probe: not yet in DB
             with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
@@ -122,6 +123,7 @@ class TestPerPRErrorIsolation:
 
         with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.side_effect = RuntimeError("forced error")
+            MockPRRepo.return_value.exists.return_value = False  # probe: not yet in DB
             with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)

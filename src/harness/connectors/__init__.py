@@ -2,7 +2,6 @@
 
 from harness.connectors.base import (
     ConnectorProtocol,
-    PRCursor,
     RateLimitStatus,
     RawPR,
     extract_linked_issue,
@@ -10,7 +9,6 @@ from harness.connectors.base import (
 
 __all__ = [
     "ConnectorProtocol",
-    "PRCursor",
     "RateLimitStatus",
     "RawPR",
     "extract_linked_issue",

@@ -101,16 +101,22 @@ class TestCreatedAscTraversal:
 
     @respx.mock
     def test_skips_prs_below_since(self) -> None:
-        """PRs with merged_at < since are skipped."""
+        """PRs with merged_at < since are skipped.
+
+        With `since` set, the scan is updated-descending bounded by `since`
+        (gate #1 / BUG C fix — no cursor). The list is updated-desc as the API
+        returns it: the in-scope PR first, then the old one whose updated_at is
+        below `since` (the break point).
+        """
         since = datetime(2024, 3, 1, tzinfo=timezone.utc)
-        old_pr = _make_pr_mock(1, merged_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
         new_pr = _make_pr_mock(2, merged_at=datetime(2024, 4, 1, tzinfo=timezone.utc))
+        old_pr = _make_pr_mock(1, merged_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
         respx.get(DIFF_URL.format(2)).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
         with patch("harness.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
-            mock_repo.get_pulls.return_value = [old_pr, new_pr]
+            mock_repo.get_pulls.return_value = [new_pr, old_pr]  # updated-desc
             mock_g.get_repo.return_value = mock_repo
 
             conn = GitHubConnector(FAKE_TOKEN)
