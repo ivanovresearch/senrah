@@ -12,7 +12,8 @@ An AI agent solving a task in this codebase can retrieve the most relevant real 
 
 ### Validated
 
-(None yet — ship to validate)
+- **Phase 1 (Walking Skeleton):** schema + migrations, GitHub ingest, indexer (problem+solution embeddings), weighted search core, `harness search` — STORE-01/02/03, INGEST-01/02, INDEX-01/02, SEARCH-01/02/04, OPS-06.
+- **Phase 2 (MCP Server):** `harness serve` exposes `search_prs_v1` over stdio + streamable-HTTP; dual structured+text output, debug-gated score components, status envelope with `best_below_threshold`, masked errors (DSN redaction), multi-repo narrowing/tagging — MCP-01/02/03/04, SEARCH-03. Real external-client + live-DB verification deferred (Docker blocker) — tracked in `02-HUMAN-UAT.md`.
 
 ### Active
 
@@ -130,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-30 after initialization*
+*Last updated: 2026-06-01 after Phase 2 (MCP Server) completion*
