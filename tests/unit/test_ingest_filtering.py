@@ -88,6 +88,9 @@ class TestIngestFiltering:
 
         with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.return_value = 1
+            # Probe runs before size()/giant: report "missing" so the giant filter
+            # path is actually exercised (a truthy probe would skip it as present).
+            MockPRRepo.return_value.exists.return_value = False
             with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)

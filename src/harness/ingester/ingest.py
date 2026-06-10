@@ -150,13 +150,27 @@ class Ingester:
                     self._throttle(rate_status)
                     rate_status = connector.rate_limit_status()  # refresh after wait
 
-                # (2) Pre-fetch filter on cheap metadata (NO diff fetched yet).
-                # is_bot reads author (list-payload, free). Only AFTER it passes
-                # do we call size(), which fires the per-PR completion GET for the
-                # giant check — so a bot costs zero completion GET (Finding 2).
+                # (2) Bot filter — author is a list-payload field, free (no GET).
                 if is_bot(raw_pr.author, filters.stop_list):
                     filtered_bot += 1
                     continue
+
+                # (3) Present-in-DB probe (gate #1 / BUG C) — BEFORE size().
+                # Skip PRs already in pull_requests via a cheap DB read, so a scope
+                # re-scan pays NEITHER the diff fetch NOR the per-PR completion GET
+                # for an already-ingested PR. Re-running the giant filter on a PR
+                # already accepted into the DB is meaningless, and paying its
+                # completion GET would re-introduce the Finding-2 N+1 on every
+                # re-scan. Criterion is strictly "present in DB" — never a cursor
+                # compare — so a PR missed on a prior run (interrupt or per-PR
+                # error isolation) is absent here and gets re-fetched.
+                if pr_repo.exists(repository_id, raw_pr.number):
+                    skipped_present += 1
+                    continue
+
+                # (4) size() fires the per-PR completion GET for the giant check —
+                # now paid ONLY for PRs not already in the DB (bots and present PRs
+                # are already out, so neither costs a completion GET — Finding 2).
                 changed_files, additions, deletions = raw_pr.size()
                 if is_giant(
                     changed_files,
@@ -168,16 +182,7 @@ class Ingester:
                     filtered_giant += 1
                     continue
 
-                # (3) Present-in-DB probe (gate #1 / BUG C): skip PRs already in
-                # pull_requests so a scope re-scan fetches ZERO diffs for them.
-                # Criterion is strictly "present in DB" — never a cursor compare —
-                # so a PR missed on a prior run (interrupt or per-PR error) is
-                # absent here and gets re-fetched.
-                if pr_repo.exists(repository_id, raw_pr.number):
-                    skipped_present += 1
-                    continue
-
-                # (4) Survivor: fetch the diff (the ONLY diff-fetch call site).
+                # (5) Survivor: fetch the diff (the ONLY diff-fetch call site).
                 try:
                     diff = connector.fetch_diff(repo_full_name, raw_pr.number)
                     if not diff:
@@ -194,7 +199,7 @@ class Ingester:
                         linked_issue=raw_pr.linked_issue,
                         files_changed=raw_pr.files_changed,
                     )
-                    # (5) Atomic upsert. advance_cursor here updates a DIAGNOSTIC
+                    # (6) Atomic upsert. advance_cursor here updates a DIAGNOSTIC
                     # high-water mark only (surfaced by `harness repos`); it does
                     # NOT bound traversal or gate fetches — resume correctness is
                     # owned by the scope re-scan + the present-in-DB probe above.

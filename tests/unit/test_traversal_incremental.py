@@ -432,9 +432,13 @@ class TestBotFilterCompletionCost:
         )
 
         mock_conn = MagicMock()
-        with patch("harness.ingester.ingest.PRRepo"), patch(
+        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo, patch(
             "harness.ingester.ingest.RepositoryRepo"
         ) as MockRepoRepo:
+            # Probe runs BEFORE size(): a "missing" PR must reach size() (its
+            # completion GET); were the probe to report present, size() would be
+            # skipped and this test could not observe the per-non-bot GET.
+            MockPRRepo.return_value.exists.return_value = False
             MockRepoRepo.return_value.upsert.return_value = MagicMock(id=1)
             MockRepoRepo.return_value.get_op_state.return_value = None
             Ingester(mock_conn).run(connector, "owner/repo", "proj")
