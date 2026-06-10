@@ -1,15 +1,11 @@
 # Production Readiness — Open Gates (Phase 3 ingest)
 
-**Status: BLOCKED on gate #1 (data-loss on resume, proven 2026-06-09).** Phase 3
-passed automated unit verification (7/7 must-haves, 231 unit tests), but live testing
-found resume silently loses ~50% of the window on interruption (see gate #1). Unit
-tests mocked the PostgreSQL transaction and the GitHub API and missed all three live
-bugs (A/B fixed, C is the blocker).
-
-**Phase 4 precondition:** gate #1 (BUG C) MUST be fixed before Phase 4 (tuning).
-Tuning scoring/weights on a corpus that drops half the window on any interruption is
-meaningless — the corpus is unpredictably holey. This is a design change (cursor
-semantics), not a "run it on Docker" item.
+**Status: gate #1 CLOSED (fix live-validated 2026-06-10). Phase 4 unblocked.**
+Phase 3 passed automated unit verification (7/7 must-haves, 231 unit tests), but live
+testing found resume silently losing ~50% of the window on interruption (gate #1 /
+BUG C). Unit tests mocked the PostgreSQL transaction and the GitHub API and missed
+all three live bugs (A/B/C — all now fixed; C's fix proven both by real-DB
+integration tests and a live interrupted-resume run, see gate #1).
 
 A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 **not** "verified on live infra". Do not read it as production-ready.
@@ -44,16 +40,18 @@ A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 
 ## Gates (in priority order)
 
-### 1. Resumable incremental ingest — DATA-LOSS · **BLOCKER (proven 2026-06-09)**
+### 1. Resumable incremental ingest — DATA-LOSS · **CLOSED (live-validated 2026-06-10)**
 A real interrupted-and-resumed `harness ingest` against efcore **lost 13 of 27
-window PRs** (silent, permanent). Resume is NOT correct. This GATES Phase 4 (see
-below). Two preconditions were found and fixed first; the third is the real blocker:
+window PRs** (silent, permanent; proven 2026-06-09). Resume was NOT correct and
+gated Phase 4. Two preconditions were found and fixed first; the third was the
+real blocker:
 
 - **Fixed (commit `bca12af`)** — `rate_limit_status` crashed the first ingest (BUG A).
 - **Fixed (commit `344c49b`)** — per-PR commits were savepoints, not commits, so a
   crash rolled back the whole run (BUG B). Now durable: a mid-run kill keeps the
   committed prefix (S1=14 survived, `cursor == max(stored)`, no bogus rows).
-- **UNFIXED — design (BUG C, the blocker):** `advance_cursor` stores a **GREATEST
+- **Fixed (commit `cdeff2e` + probe-before-size reorder; live-validated below)** —
+  design (BUG C, was the blocker): `advance_cursor` stored a **GREATEST
   high-water mark**, not a **contiguous "processed-up-to-here" low-watermark**. The
   incremental scan commits PRs in `updated`-desc order, so the cursor reaches the
   newest `merged_at` on the *first* committed PR while ~half the window is still
@@ -88,11 +86,13 @@ since_date / period) — and its cost is two new classes of silent state-bug
   "processed-up-to-here" boundary was the root of C; nothing in the read path may.)
 - **Traversal:** bounded by the scope `since` (config), never by the cursor. Every
   run re-scans the scope window (updated-desc, break at `updated_at < since`).
-- **Probe:** `PRRepo.exists(repository_id, number)` immediately before `fetch_diff`
-  — strictly *present-in-DB*, never a cursor compare. An already-ingested PR costs
-  zero diff fetch; a PR missed on a prior run (interrupt OR per-PR error isolation)
-  is absent → re-fetched. This recovers errored PRs for free — **no separate
-  freeze-on-error machinery**.
+- **Probe:** `PRRepo.exists(repository_id, number)` after the (free) bot filter and
+  **before `RawPR.size()`** — strictly *present-in-DB*, never a cursor compare. An
+  already-ingested PR costs **neither the diff fetch nor the per-PR completion GET**
+  (size() fires the completion GET; running it after the probe keeps the Finding-2
+  N+1 from coming back on every re-scan). A PR missed on a prior run (interrupt OR
+  per-PR error isolation) is absent → re-fetched. This recovers errored PRs for
+  free — **no separate freeze-on-error machinery**.
 - **`overlap_margin`: DEAD — removed.** Its only job was re-yielding a drift-skipped
   PR for the idempotent upsert to dedup (at the cost of a repeat diff fetch every
   run). The full scope re-scan re-encounters any such PR, and the probe makes the
@@ -107,6 +107,19 @@ traversal + advance_cursor, only `fetch_diff`/`rate_limit_status` stubbed), each
 RED before the fix and GREEN after:
 `tests/integration/test_resume.py::TestResumeDataLossBugC` (BUG C) and
 `::TestResumeRecoversErroredPR` (errored-PR recovery).
+
+**LIVE VALIDATION (2026-06-10, closes the gate).** Real interrupted-resume against
+dotnet/efcore on a fresh DB (scope `since_date 2026-06-03`, window = 23 PRs):
+- Run killed at 8/23 committed, with `cursor_merged_at` already at the window
+  maximum (#38367) — the exact worst-case BUG C condition (high-water cursor races
+  ahead of coverage on the updated-desc scan).
+- Resume: `15 upserted, 8 already-present` — the probe skipped all of S1 with zero
+  repeat diff fetches.
+- Clean uninterrupted reference run on a truncated DB: `23 upserted`; the final PR
+  set is **identical** to the interrupted+resumed set (Compare-Object: no diff).
+  **0 PRs lost** (vs 13/27 before the fix).
+- Filters live too: `filtered 20 bot / 1 giant` on both runs (also a live data
+  point for gate #3's stderr observability line).
 
 ### 2. `harness init` live flow + YAML structure preservation
 With a live `GITHUB_TOKEN` and a real repo: token validates (token-free
@@ -126,12 +139,21 @@ wait and floor check are unit-tested in isolation only.
 
 ## Accepted deferrals (lower priority, recorded in `.planning/phases/03-production-ingestion/03-FINDINGS-traversal.md`)
 
-- `overlap_margin` is a tunable floor, not the run-duration derivation (needs a
-  persisted run-duration column / migration 0003). MVP-accepted.
 - `pull_requests.files_changed` stays `[]` for ingested PRs (the giant filter uses
   the cheap int count, not the list).
-- Same-second cursor boundary: strict `merged_at <=` can drop a same-second sibling;
-  fix = `(merged_at, number)` tiebreak.
+
+## Resolved by the gate-#1 redesign (2026-06-10) — were deferrals
+
+- ~~`overlap_margin` tunable floor vs run-duration derivation~~ — **moot**:
+  `overlap_margin` is removed entirely (full scope re-scan + probe subsumes its
+  only job). No migration-0003 run-duration column needed.
+- ~~Same-second cursor boundary (strict `merged_at <=` against the cursor drops a
+  same-second sibling)~~ — **resolved by inclusive-since, confirmed in code**: no
+  cursor compare exists anywhere in the read path, and the scope bound is
+  boundary-inclusive (`if pr.merged_at < since: continue` in
+  `connectors/github.py` — both the created-asc spine and the updated-desc scan),
+  so a PR with `merged_at == since` stays in the window and same-second siblings
+  are both re-encountered; the probe/idempotent upsert dedups.
 
 _Mirror of `.planning/phases/03-production-ingestion/03-HUMAN-UAT.md` (which is
-gitignored). Last updated 2026-06-08._
+gitignored). Last updated 2026-06-10._

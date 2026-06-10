@@ -81,7 +81,9 @@ def ingest_cmd(
     backfill: bool = typer.Option(
         False,
         "--backfill",
-        help="Re-apply the current scope window, ignoring the stored cursor (D-B2).",
+        help="Deprecated/no-op: every run already re-scans the scope window "
+        "(the cursor never bounds traversal). Use '--scope all -' for a deep "
+        "re-enumeration.",
     ),
 ) -> None:
     """Ingest merged PRs from the configured GitHub repository.
@@ -96,7 +98,7 @@ def ingest_cmd(
       --scope since_date DATE   merged on/after an ISO date
       --scope all -             full history
       --last-n N / --all        back-compat shortcuts (map to a last_n / all scope)
-      --backfill                re-apply the scope window, ignoring the cursor (D-B2)
+      --backfill                deprecated/no-op (every run re-scans the scope window)
     """
     # Load ENV secrets (T-02-01: token from ENV only)
     try:
