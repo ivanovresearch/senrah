@@ -1,6 +1,11 @@
 # Production Readiness — Open Gates (Phase 3 ingest)
 
-**Status: gate #1 CLOSED (fix live-validated 2026-06-10). Phase 4 unblocked.**
+**Status: gate #1 CLOSED (fix live-validated 2026-06-10).**
+
+**Phase 4 preconditions:** (1) gate #1 — CLOSED (this doc); (2) a **held-out
+evaluation set** (real queries + expected-PR judgements, set aside before any
+tuning) MUST exist before Phase 4 touches scoring weights — otherwise weights
+are tuned and "validated" on the same data and the tuning is unfalsifiable.
 Phase 3 passed automated unit verification (7/7 must-haves, 231 unit tests), but live
 testing found resume silently losing ~50% of the window on interruption (gate #1 /
 BUG C). Unit tests mocked the PostgreSQL transaction and the GitHub API and missed
