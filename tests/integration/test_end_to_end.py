@@ -1,11 +1,11 @@
-"""
-tests/integration/test_end_to_end.py — End-to-end walking-skeleton integration test.
+﻿"""
+tests/integration/test_end_to_end.py вЂ” End-to-end walking-skeleton integration test.
 
-Proves SEARCH-04: seed pull_requests → index with fake embedder → search → top result.
+Proves SEARCH-04: seed pull_requests в†’ index with fake embedder в†’ search в†’ top result.
 
 This test exercises the full path:
-  seed (project/repo/PRs) → Indexer.run (fake embed_texts) → SkillRepo.search
-  → expected top PR ranked first, with correct below-threshold hint when threshold
+  seed (project/repo/PRs) в†’ Indexer.run (fake embed_texts) в†’ SkillRepo.search
+  в†’ expected top PR ranked first, with correct below-threshold hint when threshold
   is raised above all scores.
 
 Uses:
@@ -80,7 +80,7 @@ def e2e_repository_ids(sync_conn_e2e: psycopg.Connection):
 def e2e_seeded_prs(sync_conn_e2e: psycopg.Connection, e2e_repository_ids):
     """Seed 3 PRs with deterministic content for E2E search testing.
 
-    PR 201: "Fix async cancellation token propagation" — the TARGET PR.
+    PR 201: "Fix async cancellation token propagation" вЂ” the TARGET PR.
              Its problem text has strong semantic signal for queries about
              async cancellation. The fake_embedder will produce a deterministic
              vector for this text. We will use the same text as our query to
@@ -134,23 +134,24 @@ def e2e_seeded_prs(sync_conn_e2e: psycopg.Connection, e2e_repository_ids):
 
 @pytest.mark.e2e
 class TestEndToEndSearch:
-    """End-to-end: seed → index (fake embed) → search → expected top result."""
+    """End-to-end: seed в†’ index (fake embed) в†’ search в†’ expected top result."""
 
     def test_search_returns_expected_top_pr(
         self,
         sync_conn_e2e: psycopg.Connection,
         e2e_seeded_prs,
         fake_embedder,
+        pg_dsn_migrated: str,
     ):
         """After indexing with fake_embedder, searching with a near-duplicate query
         returns PR 201 as the top result (SEARCH-04)."""
         pr_ids, repository_id = e2e_seeded_prs
 
         # Build embed_texts using fake_embedder so we can predict which PR is nearest.
-        # The fake_embedder is hash-seeded: same text → same deterministic unit vector.
+        # The fake_embedder is hash-seeded: same text в†’ same deterministic unit vector.
         # For symmetric retrieval: we embed the query text and compare against both
         # problem_embedding and solution_embedding columns.
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         # Index all PRs
@@ -178,7 +179,7 @@ class TestEndToEndSearch:
         async def _do_search():
             import psycopg as _psycopg
             async with await _psycopg.AsyncConnection.connect(
-                sync_conn_e2e.info.dsn
+                pg_dsn_migrated  # info.dsn redacts the password
             ) as async_conn:
                 await register_vector_async(async_conn)
                 repo = SkillRepo(async_conn)
@@ -205,12 +206,13 @@ class TestEndToEndSearch:
         sync_conn_e2e: psycopg.Connection,
         e2e_seeded_prs,
         fake_embedder,
+        pg_dsn_migrated: str,
     ):
         """When score_threshold is raised above all scores, zero results pass,
         but the top candidate is still identifiable for the CLI hint (D-11)."""
         pr_ids, repository_id = e2e_seeded_prs
 
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         embed_cfg = EmbedConfig(
@@ -227,7 +229,7 @@ class TestEndToEndSearch:
         async def _do_search_with_high_threshold():
             import psycopg as _psycopg
             async with await _psycopg.AsyncConnection.connect(
-                sync_conn_e2e.info.dsn
+                pg_dsn_migrated  # info.dsn redacts the password
             ) as async_conn:
                 await register_vector_async(async_conn)
                 repo = SkillRepo(async_conn)
@@ -270,11 +272,12 @@ class TestEndToEndSearch:
         sync_conn_e2e: psycopg.Connection,
         e2e_seeded_prs,
         fake_embedder,
+        pg_dsn_migrated: str,
     ):
         """SearchResult has all fields required for D-12 output block."""
         pr_ids, repository_id = e2e_seeded_prs
 
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         embed_cfg = EmbedConfig(
@@ -290,7 +293,7 @@ class TestEndToEndSearch:
         async def _do_search():
             import psycopg as _psycopg
             async with await _psycopg.AsyncConnection.connect(
-                sync_conn_e2e.info.dsn
+                pg_dsn_migrated  # info.dsn redacts the password
             ) as async_conn:
                 await register_vector_async(async_conn)
                 repo = SkillRepo(async_conn)
@@ -360,7 +363,7 @@ class TestSearchOutputFormatting:
         captured = capsys.readouterr()
         # No ANSI escape codes in non-TTY output
         assert "\x1b[" not in captured.out, (
-            "ANSI escape codes found in non-TTY output — violates D-13"
+            "ANSI escape codes found in non-TTY output вЂ” violates D-13"
         )
         # Structural content present
         assert "PR #42" in captured.out

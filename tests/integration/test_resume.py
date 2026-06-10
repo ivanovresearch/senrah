@@ -40,9 +40,14 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def conn(pg_dsn_migrated: str):
-    """Synchronous psycopg3 connection to the migrated test database."""
+    """Synchronous psycopg3 connection to the migrated test database.
+
+    Function-scoped (not module): trailing SELECTs leave an autobegin
+    transaction open, and a module-scoped connection would hold its locks
+    across tests — blocking the autouse clean_tables TRUNCATE.
+    """
     with psycopg.connect(pg_dsn_migrated) as connection:
         yield connection
 

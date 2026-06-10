@@ -26,6 +26,15 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+# Docker Desktop on Windows fails to publish the Ryuk reaper's port mapping
+# ("Port mapping for container ... and port 8080 is not available"), aborting
+# every container start. Ryuk only garbage-collects leaked containers; the
+# session fixture below already cleans up via its context manager, so disable
+# the reaper on Windows. Must be set before testcontainers is imported.
+if sys.platform == "win32":
+    os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
+
 from testcontainers.postgres import PostgresContainer
 
 # psycopg3 async cannot run on Windows' default ProactorEventLoop. Integration

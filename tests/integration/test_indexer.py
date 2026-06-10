@@ -1,5 +1,5 @@
-"""
-tests/integration/test_indexer.py — Integration tests for the Indexer pipeline.
+﻿"""
+tests/integration/test_indexer.py вЂ” Integration tests for the Indexer pipeline.
 
 Uses testcontainers pgvector DB + fake_embedder fixture (no real OpenAI calls).
 Tests that the full index lifecycle works end-to-end:
@@ -148,7 +148,7 @@ class TestIndexerRun:
         _, repository_id = seeded_repository
 
         # Build an async embed_texts that uses fake_embedder under the hood
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         indexer = Indexer(sync_conn, embed_cfg)
@@ -171,7 +171,7 @@ class TestIndexerRun:
         """Each skills row has non-null problem_embedding and solution_embedding."""
         _, repository_id = seeded_repository
 
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         indexer = Indexer(sync_conn, embed_cfg)
@@ -214,7 +214,7 @@ class TestIndexerRun:
         """Skills rows store embedding_model and embedding_version from config (D-08)."""
         _, repository_id = seeded_repository
 
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         indexer = Indexer(sync_conn, embed_cfg)
@@ -252,7 +252,7 @@ class TestIndexerRun:
         """Running the indexer twice does not create duplicate skills rows."""
         _, repository_id = seeded_repository
 
-        async def fake_embed_texts(texts: list[str], model: str) -> list[list[float]]:
+        async def fake_embed_texts(texts: list[str], model: str, **kwargs: object) -> list[list[float]]:
             return [fake_embedder(t) for t in texts]
 
         indexer = Indexer(sync_conn, embed_cfg)
@@ -271,7 +271,7 @@ class TestIndexerRun:
             [repository_id],
         ).fetchone()[0]
 
-        # Second run — should be a no-op (all PRs already indexed)
+        # Second run вЂ” should be a no-op (all PRs already indexed)
         # Note: unindexed_prs returns nothing, so embed_texts won't be called
         with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
             count_second = asyncio.run(indexer.run(repository_id))
@@ -364,4 +364,4 @@ class TestSkillRepoUpsertSkill:
         ).fetchone()[0]
 
         assert count_after_first == 1
-        assert count_after_second == 1, "Duplicate row created — ON CONFLICT not working"
+        assert count_after_second == 1, "Duplicate row created вЂ” ON CONFLICT not working"
