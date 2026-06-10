@@ -48,6 +48,7 @@ from harness.db.models import Project, PullRequest, Repository
 from harness.db.repos.pr import PRRepo
 from harness.db.repos.project import ProjectRepo
 from harness.db.repos.repository import RepositoryRepo
+from harness.ingester.diff_files import parse_diff_files
 from harness.ingester.filters import is_bot, is_giant
 
 # Refresh the rate-limit status every N PRs rather than every PR (the status
@@ -197,7 +198,10 @@ class Ingester:
                         author=raw_pr.author,
                         merged_at=raw_pr.merged_at,
                         linked_issue=raw_pr.linked_issue,
-                        files_changed=raw_pr.files_changed,
+                        # Design B traversal yields files_changed == [] (no
+                        # get_files() call); derive the list from the diff we
+                        # already fetched — zero extra API cost.
+                        files_changed=parse_diff_files(diff) or raw_pr.files_changed,
                     )
                     # (6) Atomic upsert. advance_cursor here updates a DIAGNOSTIC
                     # high-water mark only (surfaced by `harness repos`); it does
