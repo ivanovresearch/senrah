@@ -2,116 +2,83 @@
 
 ## What This Is
 
-Harness is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a `search_prs` MCP tool.
+Harness is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a versioned `search_prs_v1` MCP tool.
+
+## Current State (v1.0 shipped 2026-06-12)
+
+- Full pipeline live: ingest (GitHub, multi-repo, scoped, resumable) → index (reindexable, model/version-tracked) → search (CLI + MCP stdio/streamable-HTTP).
+- Working corpus: dotnet/efcore (487 PRs, ~10 months) + encode/httpx (88 PRs), 575 skills rows, uniform `text-embedding-3-small/v2`.
+- Retrieval quality instrumented: frozen known-item eval (`eval/knownitem/`, 218 queries — recall@1 0.670, recall@5 0.881, MRR@10 0.760) as the regression scale for any corpus/weights/model change.
+- Agent-uplift A/B run (`eval/ab/`): 12 real tasks, control vs Harness — statistical dead heat on outcomes, ZERO negative-uplift cases (the below-threshold confidence flag worked), two genuine convention-transfer wins from the deepest precedents available. Conclusion: **corpus depth, not weight tuning, is the next lever.**
+- Test suite: 304 green (unit + integration incl. real-container MCP E2E); gitleaks pre-commit gate; QUAL-01..04 audited line-by-line (`docs/QUAL-AUDIT.md`).
 
 ## Core Value
 
 An AI agent solving a task in this codebase can retrieve the most relevant real merged-PR precedents (problem + the diff that solved it) via MCP, ranked by semantic similarity. If everything else fails, that retrieval must work.
 
+*(v1.0 check: still right. The A/B sharpened it — the value shows up as known-item retrieval ("this was fixed before") and convention transfer, both of which scale with corpus depth.)*
+
 ## Requirements
 
 ### Validated
 
-- **Phase 1 (Walking Skeleton):** schema + migrations, GitHub ingest, indexer (problem+solution embeddings), weighted search core, `harness search` — STORE-01/02/03, INGEST-01/02, INDEX-01/02, SEARCH-01/02/04, OPS-06.
-- **Phase 2 (MCP Server):** `harness serve` exposes `search_prs_v1` over stdio + streamable-HTTP; dual structured+text output, debug-gated score components, status envelope with `best_below_threshold`, masked errors (DSN redaction), multi-repo narrowing/tagging — MCP-01/02/03/04, SEARCH-03. Real external-client + live-DB verification deferred (Docker blocker) — tracked in `02-HUMAN-UAT.md`.
+- ✓ Full GitHub-only MVP — v1.0 (31/31 requirements, archived in `milestones/v1.0-REQUIREMENTS.md`): storage schema + HNSW, connector seam + GitHub connector, scoped/incremental/resumable ingest with filters and rate-limit handling, dual-embedding indexing with `--reindex`, weighted thresholded search with multi-repo narrowing, versioned MCP tool over stdio+network, full CLI (`init`/`repos`/`ingest`/`index`/`search`/`serve`/`status`), opt-in search logging, secrets hygiene + gitleaks, test suite.
 
 ### Active
 
-<!-- Full GitHub-only MVP per the technical spec. -->
+(None — define with `/gsd:new-milestone`. Candidates surfaced by v1.0 evidence, in value order:)
 
-**Storage & data model**
-- [ ] PostgreSQL + pgvector schema: `projects`, `repositories`, `pull_requests` (raw store incl. diff + content_hash), `skills` (problem_embedding + solution_embedding, embedding_model, embedding_version)
-- [ ] Repository-pattern data-access boundary (no abstraction over other vector DBs, just a clean seam)
-- [ ] Raw `diff` persisted in DB — enables code output, updates, and reindex without re-fetching from source
-
-**Ingestion (GitHub MVP)**
-- [ ] Extensible connector interface: `validate_credentials`, `list_merged_prs(filters, cursor)`, `fetch_pr(number)`, `rate_limit_status`
-- [ ] GitHub connector implementation behind that interface
-- [ ] Load filters: merged-only, non-empty diff, exclude bots (`[bot]` suffix + configurable stop-list), exclude giant PRs (>100 files OR >5000 lines, configurable)
-- [ ] Per-repo ingest scope: `all` / `last_n` / `since_date` / `period` (by `merged_at`)
-- [ ] Incremental ingest by `merged_at` cursor only (store content_hash but do not re-check edited descriptions in MVP)
-- [ ] Rate limiting + resumability: configurable `RATE_LIMIT`, respect `rate_limit_status`, backoff, resume from cursor on interruption, per-PR errors logged without aborting the run
-
-**Indexing & embeddings**
-- [ ] OpenAI Text Embedding 3 Small for both embeddings
-- [ ] `problem_embedding` = `title` + issue/description body; truncate (head-priority: title + first paragraph) when over ~8191 tokens, no LLM summarization
-- [ ] `solution_embedding` = clean diff truncated to `EMBED_DIFF_LIMIT` (no factual_summary template — metadata stays in DB for filtering/display only)
-- [ ] Reindex from raw store: `harness index --reindex` using `embedding_model` + `embedding_version`, no source round-trip
-- [ ] Diff chunking deliberately deferred but unblocked (raw diff stored → reindex-only later)
-
-**Search & scoring**
-- [ ] Score = `W_PROBLEM × problem_sim + W_SOLUTION × solution_sim`, weights configurable (default 0.6 / 0.4)
-- [ ] Top-N with threshold: default N=5 (configurable), drop results below `SCORE_THRESHOLD`
-- [ ] Multi-repo search across all repos in a project by default; optional `repo`/`repos[]` narrowing; each result tagged with source repo
-
-**MCP server**
-- [ ] Versioned `search_prs_v1` tool (contract version in the name)
-- [ ] Input: `query` (required), `repos[]` (opt), `limit` (opt), `debug` (opt)
-- [ ] Output per result: PR number/title, score (p/s components only when `debug=true`), repo, author, merged_at, linked issue (if any), files (max 6 + "+K more"), PR link, and a diff excerpt truncated to `OUTPUT_DIFF_LIMIT`
-- [ ] Read-only, stateless over the DB; starts independently of ingest/index; never hits the source at read-time
-- [ ] Transports: stdio (local agent) and network (shared team instance)
-
-**CLI**
-- [ ] `init` (create project, add repos, enter + validate credential scopes)
-- [ ] `repos` (list connected repos, status, scope)
-- [ ] `ingest` (run/resume per-repo load with progress)
-- [ ] `index` (build embeddings from raw store; `--reindex`)
-- [ ] `status` (ingest, index, MCP server observability — see below)
-- [ ] `serve` (start MCP server, stdio or network)
-- [ ] `search "<text>"` (terminal-only retrieval test, no MCP — quality debugging)
-
-**Observability & config**
-- [ ] `status` reports: per-repo ingest counts + cursor + rate-limit remaining/reset + errored PRs; index vector count + model/version + raw PRs lacking embeddings + last index time; MCP up/down + transport + request count + latency
-- [ ] Optional search logging (`[E4]`, off by default, configurable, with privacy note for private repos)
-- [ ] Secrets read **only** from environment variables; no coupling to any secret backend
-- [ ] Public-repo hygiene: `.env.example` with placeholders only, `.env` git-ignored, README documents minimal token scopes (GitHub read-only PR/issues, OpenAI embeddings-only)
-
-**Quality**
-- [ ] Thorough testing: unit tests on scoring/truncation/filtering, connector tests with mocked API, E2E on a real test repository
+- [ ] Corpus depth: `--scope all` / multi-year ingest — the A/B's identified lever; known-item eval is the before/after scale
+- [ ] Known-item eval v3: dedupe/penalize backport duplicates; investigate the 19 misses for systematics
+- [ ] CI: test suite + gitleaks scan server-side (gate currently per-clone opt-in)
+- [ ] `harness init` upsert comment-preservation gap (drops standalone comments above rewritten keys)
 
 ### Out of Scope
 
-- **LLM providers (Claude/Codex/local) inside harness** — harness is read-only search; agents only *consume* MCP, they are not part of harness. Embeddings are done by a dedicated embedding model.
-- **Abstraction over other vector databases** — only a clean repository-pattern data-access seam; pgvector is the chosen store.
-- **GitLab / Bitbucket connectors** — deferred behind the connector interface; GitHub only in MVP.
-- **Diff chunking** — single-vector with truncation in MVP; raw diff stored so chunking is reindex-only later.
-- **LLM summarization of long descriptions** — head-priority truncation instead (avoids extra call, cost, failure point).
-- **Re-checking edited merged-PR descriptions** — content_hash stored, but no re-verification in MVP.
-- **Cross-repo score normalization** — known MVP limitation; top may skew toward a "loud" repo.
-- **Search access control / per-permission filtering** — deferred (repo tag on each PR is the future seam).
-- **Production hardening (backups, HA)** — Dockerized Postgres+pgvector acceptable for MVP.
-- **`commit_messages` in MCP output** — stored in DB, not returned.
+- **LLM providers (Claude/Codex/local) inside harness** — harness is read-only search; agents only *consume* MCP. *(v1.0 audit: still right — the A/B used external agents cleanly.)*
+- **Abstraction over other vector databases** — pgvector chosen; repository-pattern seam only. *(Still right.)*
+- **GitLab / Bitbucket connectors** — behind the connector seam. *(Still right; seam held — Ingester/MCP never import the concrete connector.)*
+- **Diff chunking** — single-vector with truncation; raw diff stored so chunking is reindex-only later. *(Still right, with data: 19% of solution embeddings truncate at 6000 tokens — revisit only if eval shows misses concentrate in truncated targets.)*
+- **LLM summarization of long descriptions** — head-priority truncation instead. *(Still right.)*
+- **Re-checking edited merged-PR descriptions** — content_hash stored, no re-verify. *(Still right.)*
+- **Cross-repo score normalization** — *(v1.0 data point: two-repo corpus showed zero eval interference; keep deferred.)*
+- **Search access control** — repo tag is the future seam. *(Still right.)*
+- **Production hardening (backups, HA)** — Docker Postgres acceptable. *(Still right.)*
+- **Weight tuning as a project priority** — NEW (from A/B): re-ranking a shallow corpus cannot create uplift; tuning is second-order until corpus depth changes what there is to rank.
 
 ## Context
 
-- **Greenfield build, spec-driven.** A prototype exists but its code is NOT a reference — this technical spec is the single source of truth. The spec's §12 "differences from the prototype" list is therefore the set of decisions we implement directly (diff persisted, clean-diff solution embedding, truncation, diff excerpt in output, top-N+threshold, debug-only score components, configurable weights/limits, versioned MCP contract, ENV-only secrets, no LLM providers).
-- **Three components with distinct lifecycles** (Ingestion, Indexer, MCP server) plus a CLI as the control point, with a raw store (`pull_requests` table) between ingestion and indexing so reindex never re-fetches.
-- **Open-source, public repository** — drives the ENV-only secrets posture and `.env.example`/scope-documentation hygiene.
-- **Deployment models:** solo developer (local stdio MCP, local/Docker Postgres) and shared team instance (network MCP, shared Postgres, ENV secrets from any backend; read-only + stateless → scales simply).
+- Open-source, public repository — ENV-only secrets, `.env.example`, gitleaks gate, minimal token scopes.
+- Three components with distinct lifecycles (Ingestion, Indexer, MCP server) + CLI control point; raw store between ingest and index so reindex never re-fetches. This held up: the v1→v2 embedding migration and the files_changed backfill both ran entirely from the raw store.
+- Evidence culture established during v1.0: unit-green ≠ working (live testing found 3 ingest bugs, an MCP heartbeat scoping bug, and 2 init input holes that mocks missed); retrieval changes get measured on the frozen eval, not eyeballed.
+- ~6.5k LOC Python (src), 304 tests. Key infra: psycopg3, pgvector HNSW, FastMCP, typer, ruamel (init write path), alembic (3 migrations).
 
 ## Constraints
 
-- **Tech stack**: Python; PostgreSQL + pgvector (ivfflat/hnsw indexes on both embedding columns) — chosen, not abstracted.
+- **Tech stack**: Python; PostgreSQL + pgvector (HNSW on both embedding columns) — chosen, not abstracted.
 - **Embeddings**: OpenAI Text Embedding 3 Small, vector(1536); ~8191 token input limit drives truncation.
-- **Security**: open-source code → secrets only via environment variables; no real values anywhere in the repo (configs or tests); minimal token scopes documented.
-- **Architecture**: connector interface is the core extensibility seam — a new source must require no changes to Indexer or MCP; MCP contract is versioned so output-format changes don't break dependent agents/prompts.
-- **MCP server**: read-only, stateless over DB, must start independently and never touch the source at read-time.
+- **Security**: open-source code → secrets only via environment variables; no real values anywhere in the repo; minimal token scopes documented.
+- **Architecture**: connector interface is the core extensibility seam — a new source must require no changes to Indexer or MCP; MCP contract is versioned.
+- **MCP server**: read-only, stateless over DB, starts independently, never touches the source at read-time.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| PostgreSQL + pgvector, no vector-DB abstraction | One chosen store; only a repository-pattern access seam needed | — Pending |
-| Persist raw diff in DB | Enables code output, updates, reindex without re-fetch | — Pending |
-| solution_embedding = clean diff (drop factual_summary) | Template metadata is noise for semantic search; keep it in DB for filtering/display | — Pending |
-| Head-priority truncation, no LLM summarization | Avoids extra call, cost, and a failure point | — Pending |
-| Top-N with threshold (N=5 default) | Don't dump irrelevant tail on narrow queries | — Pending |
-| Configurable scoring weights (0.6/0.4) + limits | Tunable per project | — Pending |
-| Versioned MCP tool name (`search_prs_v1`) | Format changes don't break dependent prompts/agents | — Pending |
-| ENV-only secrets, backend user's choice | Open-source; not coupled to any secret manager | — Pending |
-| No LLM providers in harness | Read-only search; agents consume MCP, aren't part of harness | — Pending |
-| Incremental ingest by `merged_at` only | Simplest correct cursor; edited-PR re-check deferred | — Pending |
-| Build from spec, not prototype code | Spec is source of truth; §12 lists deliberate divergences | — Pending |
+| PostgreSQL + pgvector, no vector-DB abstraction | One chosen store; repository-pattern seam only | ✓ Good — HNSW handled 575-row corpus at ~ms latency; zero store friction all milestone |
+| Persist raw diff in DB | Code output, updates, reindex without re-fetch | ✓ Good — enabled `--reindex`, files_changed backfill, and the A/B reference diffs, all with zero GitHub calls |
+| solution_embedding = clean diff | Template metadata is noise for semantic search | ✓ Good — known-item recall@5 0.881 on problem+solution composite |
+| Head-priority truncation, no LLM summarization | Avoids extra call, cost, failure point | ✓ Good — 19% of diffs truncate; eval shows no miss concentration there yet |
+| Top-N with threshold | Don't dump irrelevant tail | ✓ Good — in the A/B the [BELOW THRESHOLD] flag produced ZERO misled-agent cases |
+| Configurable weights (0.6/0.4) | Tunable per project | ⚠ Revisit framing — A/B showed tuning is second-order to corpus depth; keep configurable, don't invest |
+| Versioned MCP tool name | Format changes don't break dependent prompts | ✓ Good (untested by an actual v2 yet) |
+| ENV-only secrets | Open-source posture | ✓ Good — gitleaks history scan clean across all 70+ commits |
+| No LLM providers in harness | Read-only search | ✓ Good |
+| Incremental ingest by `merged_at` cursor | Simplest correct cursor | ✗ REVERSED (BUG C) — high-water cursor as a resume boundary lost ~50% of a window on interrupt; replaced by full-scope re-scan + present-in-DB probe; cursor demoted to diagnostic. Lesson: a documented-but-under-scoped edge is still a blocker |
+| Build from spec, not prototype | Spec is source of truth | ✓ Good |
+| Full-scope re-scan + probe owns resume correctness (NEW, v1.0) | Bounded scopes make re-scan cheap; probe makes it free; recovers errored PRs without extra machinery | ✓ Good — live-proven 23/23 after worst-case interrupt |
+| Automation-title filter as config regexes (NEW, v1.0) | [bot]-suffix misses human-named sync accounts | ✓ Good — corpus purged of 56 junk rows; generic knob, no hardcoded opinions |
+| Frozen known-item eval as regression scale (NEW, v1.0) | Issue text is never embedded → leak-free label with precision 1.0 | ✓ Good — already caught that corpus 2× growth costs ranking nothing |
 
 ## Evolution
 
@@ -131,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-01 after Phase 2 (MCP Server) completion*
+*Last updated: 2026-06-12 after v1.0 milestone*
