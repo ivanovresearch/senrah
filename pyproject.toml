@@ -23,8 +23,10 @@ dependencies = [
     "mcp>=1.27.2,<2",
     # Comment-preserving round-trip YAML writer for `harness init` (OPS-01).
     # Read path stays on yaml.safe_load; ruamel is used only on the init write
-    # path. Install gated behind a human legitimacy checkpoint (T-03-SC).
-    "ruamel.yaml>=0.18,<0.19",
+    # path. Legitimacy checkpoint passed 2026-06-12 (T-03-SC): PyPI ruamel.yaml,
+    # author Anthon van der Neut, 273 releases since 2014, round-trip tests
+    # green on 0.19.1.
+    "ruamel.yaml>=0.18,<0.20",
 ]
 
 [project.optional-dependencies]
