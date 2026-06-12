@@ -103,6 +103,9 @@ class McpConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     log_level: str = "WARNING"
+    # Heartbeat/metrics file maintained by `harness serve`, read by
+    # `harness status` (OPS-04). Counters + timestamps only, never query text.
+    status_file: str = "harness-mcp-status.json"
 
 
 @dataclass(frozen=True)
@@ -309,6 +312,7 @@ def load_yaml_config(path: Path) -> YamlConfig:
         host=mcp_block.get("host", "127.0.0.1"),
         port=mcp_block.get("port", 8000),
         log_level=mcp_block.get("log_level", "WARNING"),
+        status_file=mcp_block.get("status_file", "harness-mcp-status.json"),
     )
 
     return YamlConfig(

@@ -133,6 +133,28 @@ class SkillRepo:
             },
         )
 
+    def index_stats(self) -> dict:
+        """Aggregate index health for `harness status` (OPS-04).
+
+        Returns:
+            {"total_vectors": int (skills rows; each row holds two embeddings),
+             "models": [(model, version, count), ...],
+             "last_indexed_at": datetime | None}
+        """
+        total = self._conn.execute("SELECT count(*) FROM skills").fetchone()[0]
+        models = self._conn.execute(
+            """
+            SELECT embedding_model, embedding_version, count(*)
+            FROM skills GROUP BY 1, 2 ORDER BY 3 DESC
+            """
+        ).fetchall()
+        last = self._conn.execute("SELECT max(created_at) FROM skills").fetchone()[0]
+        return {
+            "total_vectors": int(total),
+            "models": [(m, v, int(c)) for m, v, c in models],
+            "last_indexed_at": last,
+        }
+
     def delete_for_repository(self, repository_id: int) -> int:
         """Delete ALL skills rows for a repository's pull requests.
 

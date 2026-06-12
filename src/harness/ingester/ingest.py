@@ -136,6 +136,7 @@ class Ingester:
         skipped_present = 0  # already in DB (probe) — re-scan cost avoided
         status = "success"
         last_error: str | None = None
+        pr_errors: list[dict] = []  # per-PR failures, persisted for `status` (OPS-04)
         rate_status = None
 
         try:
@@ -228,6 +229,7 @@ class Ingester:
                     # absent from the DB, so the next scope re-scan back-fills it
                     # via the probe. Log and continue (INGEST-05).
                     print(f"[ingester] #{raw_pr.number}: {exc}", file=sys.stderr)
+                    pr_errors.append({"number": raw_pr.number, "error": str(exc)})
 
                 if filters.inter_fetch_delay > 0:
                     time.sleep(filters.inter_fetch_delay)
@@ -241,6 +243,7 @@ class Ingester:
                 status=status,
                 ran_at=datetime.now(timezone.utc),
                 last_error=last_error,
+                ingest_errors=pr_errors,
             )
             print(
                 f"[ingester] {repo_full_name}: {upserted} upserted, "

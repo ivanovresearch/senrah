@@ -78,7 +78,8 @@ class RepositoryRepo:
         """
         row = self._conn.execute(
             """
-            SELECT cursor_merged_at, cursor_number, last_run_at, last_run_status, last_error
+            SELECT cursor_merged_at, cursor_number, last_run_at, last_run_status,
+                   last_error, ingest_errors
             FROM repositories
             WHERE project_id = %(project_id)s AND name = %(name)s
             """,
@@ -92,6 +93,7 @@ class RepositoryRepo:
             last_run_at=row[2],
             last_run_status=row[3],
             last_error=row[4],
+            ingest_errors=row[5] if row[5] is not None else [],
         )
 
     def advance_cursor(
@@ -132,18 +134,26 @@ class RepositoryRepo:
         status: str,
         ran_at: object,
         last_error: str | None,
+        ingest_errors: list[dict] | None = None,
     ) -> None:
         """Record the outcome of the most recent ingest run.
 
         Called in the Ingester's finally: block regardless of success/failure.
         Never calls conn.commit() — the Ingester owns transaction lifecycle.
+
+        ingest_errors (OPS-04): the run's per-PR failures as
+        [{"number": int, "error": str}]; overwritten every run (empty list on
+        a clean run) so `harness status` can list them.
         """
+        import json as _json
+
         self._conn.execute(
             """
             UPDATE repositories
                SET last_run_at     = %(ran_at)s,
                    last_run_status = %(status)s,
-                   last_error      = %(last_error)s
+                   last_error      = %(last_error)s,
+                   ingest_errors   = %(ingest_errors)s::jsonb
              WHERE id = %(repository_id)s
             """,
             {
@@ -151,5 +161,6 @@ class RepositoryRepo:
                 "ran_at": ran_at,
                 "status": status,
                 "last_error": last_error,
+                "ingest_errors": _json.dumps(ingest_errors or []),
             },
         )

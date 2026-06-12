@@ -74,6 +74,8 @@ class RepoOpState:
     last_run_at: timestamp of the most recent completed ingest run
     last_run_status: "success" | "error" | None
     last_error: last per-run error message, if any
+    ingest_errors: the most recent run's per-PR failures (OPS-04),
+        [{"number": int, "error": str}]; empty list on a clean run
     """
 
     cursor_merged_at: datetime | None = None
@@ -81,3 +83,4 @@ class RepoOpState:
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     last_error: str | None = None
+    ingest_errors: list = field(default_factory=list)

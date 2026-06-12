@@ -18,3 +18,8 @@ harness.yaml
 
 # Local tooling binaries (gitleaks etc.) — fetched per machine, never committed
 tools/
+
+# Runtime artifacts: opt-in search log (may contain query text) and the
+# MCP heartbeat/status file
+harness-search.log
+harness-mcp-status.json

@@ -111,11 +111,39 @@ def serve_cmd(
     # "network" → "streamable-http"  (HTTP POST /mcp; stateless_http=True set in factory)
     mcp_transport = "stdio" if transport == "stdio" else "streamable-http"
 
+    # OPS-04: maintain the status/heartbeat file while the server PROCESS runs
+    # so `harness status` can report up/down, transport, request count, latency.
+    # A daemon THREAD (not the MCP lifespan) owns the heartbeat: for
+    # streamable-http the lifespan is session-scoped and would leave the file
+    # absent between client sessions.
+    import threading
+
+    from harness.mcp.status import HEARTBEAT_SECONDS, McpStatusWriter
+
+    status_writer = McpStatusWriter(cfg.mcp.status_file, transport=mcp_transport)
+    status_writer.flush()
+    stop_heartbeat = threading.Event()
+
+    def _heartbeat() -> None:
+        while not stop_heartbeat.wait(HEARTBEAT_SECONDS):
+            status_writer.flush()
+
+    threading.Thread(target=_heartbeat, daemon=True, name="mcp-status-heartbeat").start()
+
     # Build the server (host/port passed to the factory; stateless_http=True is always
     # set in create_mcp_server — this is correct for network and harmless for stdio)
-    server = create_mcp_server(env, cfg, host=effective_host, port=effective_port)
+    server = create_mcp_server(
+        env, cfg, host=effective_host, port=effective_port, status_writer=status_writer
+    )
 
     # Start the server — FastMCP.run() is synchronous (calls anyio.run() internally).
     # Do NOT wrap in asyncio.run() — that would nest event loop calls.
     # The WindowsSelectorEventLoopPolicy set in cli/main.py is inherited here.
-    server.run(transport=mcp_transport)
+    try:
+        server.run(transport=mcp_transport)
+    finally:
+        # Clean shutdown: stop the heartbeat and remove the file so `status`
+        # reports "down". On a crash/kill the file remains and `status`
+        # reports "stale" once the heartbeat ages out — by design.
+        stop_heartbeat.set()
+        status_writer.remove()

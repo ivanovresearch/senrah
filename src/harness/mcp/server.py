@@ -44,6 +44,7 @@ from harness.mcp.schema import SearchResponseV1
 
 if TYPE_CHECKING:
     from harness.config import EnvSettings, YamlConfig
+    from harness.mcp.status import McpStatusWriter
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,7 @@ def create_mcp_server(
     cfg: Optional["YamlConfig"],
     host: Optional[str] = None,
     port: Optional[int] = None,
+    status_writer: Optional["McpStatusWriter"] = None,
 ) -> FastMCP:
     """Construct a FastMCP instance with search_prs_v1 registered.
 
@@ -142,7 +144,14 @@ def create_mcp_server(
 
     @asynccontextmanager
     async def _lifespan(server: FastMCP):
-        """Open async pool at startup; close at shutdown (Pattern 3)."""
+        """Open async pool at startup; close at shutdown (Pattern 3).
+
+        NOTE: the OPS-04 status-file heartbeat does NOT live here — for
+        streamable-http this lifespan is session-scoped, not process-scoped
+        (it would only run while a client session is open). The heartbeat
+        thread is owned by serve_cmd; the status_writer passed to the factory
+        is used only to record per-request latency in the tool handler.
+        """
         if env is not None:
             from harness.db.pool import create_pool
             pool = await create_pool(env.database_url)
@@ -196,6 +205,10 @@ def create_mcp_server(
             ToolError: On query embedding failure (D-05) or DB/search error (D-06).
                        Messages are generic — no DSN or internal details (T-02-05).
         """
+        import time as _time
+
+        _t0 = _time.monotonic()  # OPS-04: request latency for the status file
+
         # Resolve per-call config from lifespan context or module defaults
         lifespan_ctx = ctx.request_context.lifespan_context
         pool = lifespan_ctx["pool"]
@@ -267,6 +280,15 @@ def create_mcp_server(
             # _redact_credentials strips userinfo/password before it reaches stderr.
             logger.error("DB search error: %s", _redact_credentials(str(exc)))
             raise ToolError("Search backend unavailable")
+
+        # OPS-05: opt-in search logging (SEARCH_LOG=true); no-op by default.
+        from harness.search_log import log_search
+
+        log_search(query, len(results), source="mcp")
+
+        # OPS-04: record request latency into the status file (serve mode only).
+        if status_writer is not None:
+            status_writer.record_request((_time.monotonic() - _t0) * 1000.0)
 
         # Step 3: Build response envelope and text block
         envelope = build_envelope(

@@ -30,6 +30,7 @@ from harness.cli.init import init_cmd
 from harness.cli.repos import repos_cmd
 from harness.cli.search import search_cmd
 from harness.cli.serve import serve_cmd
+from harness.cli.status import status_cmd
 
 app = typer.Typer(
     help="Harness — semantic PR search for AI coding agents.",
@@ -53,6 +54,9 @@ app.command("serve")(serve_cmd)
 
 # Repos subcommand (Plan 03-05) — read-only list of repos + scope + op-state
 app.command("repos")(repos_cmd)
+
+# Status subcommand (Phase 5 / OPS-04) — ingest/index/MCP health view
+app.command("status")(status_cmd)
 
 
 if __name__ == "__main__":

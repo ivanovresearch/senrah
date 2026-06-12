@@ -67,3 +67,6 @@ mcp:
   port: 8000
   # FastMCP log level. Use "INFO" or "DEBUG" for troubleshooting.
   log_level: "WARNING"
+  # Heartbeat/metrics file maintained by `harness serve` and read by
+  # `harness status` (counters + timestamps only — never query text).
+  # status_file: harness-mcp-status.json

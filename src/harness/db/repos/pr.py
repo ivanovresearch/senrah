@@ -138,6 +138,27 @@ class PRRepo:
         ).fetchone()
         return row is not None
 
+    def count_for_repository(self, repository_id: int) -> int:
+        """Total stored PRs for a repository (`harness status` ingest section)."""
+        row = self._conn.execute(
+            "SELECT count(*) FROM pull_requests WHERE repository_id = %(rid)s",
+            {"rid": repository_id},
+        ).fetchone()
+        return int(row[0])
+
+    def unindexed_count(self, repository_id: int) -> int:
+        """PRs lacking a skills row (`harness status` index section)."""
+        row = self._conn.execute(
+            """
+            SELECT count(*)
+            FROM pull_requests pr
+            WHERE pr.repository_id = %(rid)s
+              AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.pr_id = pr.id)
+            """,
+            {"rid": repository_id},
+        ).fetchone()
+        return int(row[0])
+
     # ------------------------------------------------------------------
     # unindexed_prs — read path for Indexer (Plan 01-03)
     # ------------------------------------------------------------------

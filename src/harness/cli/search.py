@@ -276,6 +276,11 @@ def search_cmd(
         typer.echo(f"ERROR during search: {exc}", err=True)
         raise typer.Exit(code=1)
 
+    # OPS-05: opt-in search logging (SEARCH_LOG=true); no-op by default.
+    from harness.search_log import log_search
+
+    log_search(query, len(results), source="cli")
+
     if results:
         total = len(results)
         for i, result in enumerate(results, start=1):
