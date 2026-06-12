@@ -20,7 +20,15 @@ ingest:
   # Legacy key still supported for back-compat:
   default_last_n: 100
   # Bot stop-list: authors unconditionally excluded (in addition to [bot] suffix).
+  # Useful for automation under human-looking accounts (e.g. internal-sync bots).
   # stop_list: [dependabot, renovate]
+  # Automation-title filter: case-insensitive regexes over the PR title;
+  # matching PRs are excluded before any per-PR API call. Catches recurring
+  # automation whose author is not bot-suffixed.
+  # title_stop_patterns:
+  #   - 'update dependencies from'
+  #   - 'merging internal commits'
+  #   - '\[automated\]'
   # Giant-PR thresholds (strictly-greater comparisons):
   # max_files: 100     # exclude PRs touching more than this many files
   # max_lines: 5000    # exclude PRs with more than this many added+deleted lines

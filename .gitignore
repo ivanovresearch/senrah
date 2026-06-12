@@ -11,3 +11,10 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# Project-local config: real per-user tunables stay local (copy from
+# harness.yaml.example). Keeps "temporary" tokens from ever being tracked.
+harness.yaml
+
+# Local tooling binaries (gitleaks etc.) — fetched per machine, never committed
+tools/

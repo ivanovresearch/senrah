@@ -1,0 +1,34 @@
+#!/bin/sh
+# Pre-commit secret gate (QUAL-04): gitleaks scans every commit's staged
+# changes; a token-shaped string blocks the commit and reports file + line.
+#
+# One-time setup per clone:
+#   git config core.hooksPath .githooks
+#
+# gitleaks binary resolution: PATH first, then the repo-local
+# tools/gitleaks/ directory (gitignored; fetch a release binary from
+# https://github.com/gitleaks/gitleaks/releases). The gate FAILS CLOSED:
+# a missing scanner blocks the commit rather than silently waving it
+# through.
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GL="gitleaks"
+
+if ! command -v "$GL" >/dev/null 2>&1; then
+    for candidate in \
+        "$REPO_ROOT/tools/gitleaks/gitleaks.exe" \
+        "$REPO_ROOT/tools/gitleaks/gitleaks"; do
+        if [ -x "$candidate" ]; then
+            GL="$candidate"
+            break
+        fi
+    done
+fi
+
+if ! command -v "$GL" >/dev/null 2>&1 && [ ! -x "$GL" ]; then
+    echo "pre-commit: gitleaks not found (PATH or tools/gitleaks/)." >&2
+    echo "Install: https://github.com/gitleaks/gitleaks/releases" >&2
+    exit 1
+fi
+
+exec "$GL" git --pre-commit --staged --redact --no-banner
