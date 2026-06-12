@@ -69,8 +69,11 @@ async def _run(tag: str) -> None:
                     problem_weight=cfg.search.problem_weight,
                     solution_weight=cfg.search.solution_weight,
                 )
+                # v2 backport rule: any PR in the relevant set is a hit
+                # (v1 manifests lack relevant_prs — fall back to the target).
+                relevant = set(q.get("relevant_prs", [q["target_pr"]]))
                 rank = next(
-                    (i + 1 for i, r in enumerate(results) if r.number == q["target_pr"]),
+                    (i + 1 for i, r in enumerate(results) if r.number in relevant),
                     None,
                 )
                 per_query.append(
