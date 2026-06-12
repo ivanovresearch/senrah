@@ -126,6 +126,9 @@ class IngestFilterConfig:
     """Load-filter tunables parsed from the ingest: YAML block (INGEST-03/04).
 
     stop_list: authors unconditionally excluded (in addition to [bot] suffix)
+    title_stop_patterns: case-insensitive title regexes excluding recurring
+        automation PRs whose author is NOT bot-suffixed (e.g. internal-sync
+        accounts). Empty by default — opt-in via ingest.title_stop_patterns.
     max_files: giant-PR threshold (files_changed > max_files → exclude)
     max_lines: giant-PR threshold (additions + deletions > max_lines → exclude)
     rate_limit_floor: pause ingest when remaining < floor (INGEST-06)
@@ -133,6 +136,7 @@ class IngestFilterConfig:
     """
 
     stop_list: frozenset[str] = field(default_factory=frozenset)
+    title_stop_patterns: tuple[str, ...] = ()
     max_files: int = 100
     max_lines: int = 5000
     rate_limit_floor: int = 100
@@ -268,8 +272,10 @@ def load_yaml_config(path: Path) -> YamlConfig:
 
     # Parse filter knobs from ingest block (INGEST-03)
     raw_stop_list = ingest_block.get("stop_list", []) or []
+    raw_title_patterns = ingest_block.get("title_stop_patterns", []) or []
     filters = IngestFilterConfig(
         stop_list=frozenset(raw_stop_list),
+        title_stop_patterns=tuple(raw_title_patterns),
         max_files=ingest_block.get("max_files", 100),
         max_lines=ingest_block.get("max_lines", 5000),
         rate_limit_floor=ingest_block.get("rate_limit_floor", 100),

@@ -49,7 +49,7 @@ from harness.db.repos.pr import PRRepo
 from harness.db.repos.project import ProjectRepo
 from harness.db.repos.repository import RepositoryRepo
 from harness.ingester.diff_files import parse_diff_files
-from harness.ingester.filters import is_bot, is_giant
+from harness.ingester.filters import is_automation_title, is_bot, is_giant
 
 # Refresh the rate-limit status every N PRs rather than every PR (the status
 # call is itself an API request — RESEARCH Pattern 5 anti-pattern note).
@@ -130,6 +130,7 @@ class Ingester:
         # ---- Forward pass ----
         upserted = 0
         filtered_bot = 0
+        filtered_title = 0
         filtered_giant = 0
         filtered_empty = 0
         skipped_present = 0  # already in DB (probe) — re-scan cost avoided
@@ -154,6 +155,13 @@ class Ingester:
                 # (2) Bot filter — author is a list-payload field, free (no GET).
                 if is_bot(raw_pr.author, filters.stop_list):
                     filtered_bot += 1
+                    continue
+
+                # (2b) Automation-title filter — title is also list-payload,
+                # free. Catches recurring automation whose author is not
+                # bot-suffixed (configured via ingest.title_stop_patterns).
+                if is_automation_title(raw_pr.title, filters.title_stop_patterns):
+                    filtered_title += 1
                     continue
 
                 # (3) Present-in-DB probe (gate #1 / BUG C) — BEFORE size().
@@ -237,8 +245,8 @@ class Ingester:
             print(
                 f"[ingester] {repo_full_name}: {upserted} upserted, "
                 f"{skipped_present} already-present, "
-                f"filtered {filtered_bot} bot / {filtered_giant} giant / "
-                f"{filtered_empty} empty-diff",
+                f"filtered {filtered_bot} bot / {filtered_title} automation-title / "
+                f"{filtered_giant} giant / {filtered_empty} empty-diff",
                 file=sys.stderr,
             )
 

@@ -161,3 +161,82 @@ class TestIngestFiltering:
                     assert not pr_arg.author.endswith("[bot]"), (
                         f"Bot PR was upserted: author={pr_arg.author}"
                     )
+
+
+class TestAutomationTitleFilter:
+    """Automation-titled PRs (non-bot authors) are excluded via config patterns."""
+
+    def test_predicate_matches_configured_patterns(self) -> None:
+        from harness.ingester.filters import is_automation_title
+
+        patterns = (
+            "source code updates from dotnet/dotnet",
+            "merging internal commits",
+            r"\[automated\]",
+        )
+        assert is_automation_title(
+            "[release/10.0] Source Code Updates from dotnet/dotnet", patterns
+        )
+        assert is_automation_title("Merging internal commits for release/8.0", patterns)
+        assert is_automation_title("[automated] Merge branch 'release' => 'main'", patterns)
+        assert not is_automation_title("Fix SIGN cast for decimal", patterns)
+        # Empty config = no opinion, nothing filtered
+        assert not is_automation_title("Merging internal commits for release/8.0", ())
+
+    def test_config_parses_title_stop_patterns(self, tmp_path) -> None:
+        from harness.config import load_yaml_config
+
+        cfg_file = tmp_path / "harness.yaml"
+        cfg_file.write_text(
+            "project:\n  name: p\n"
+            "repositories:\n  - type: github\n    name: o/r\n"
+            "ingest:\n"
+            "  stop_list: [syncbot-account]\n"
+            "  title_stop_patterns:\n"
+            "    - 'merging internal commits'\n",
+            encoding="utf-8",
+        )
+        cfg = load_yaml_config(cfg_file)
+        assert cfg.filters.title_stop_patterns == ("merging internal commits",)
+        assert "syncbot-account" in cfg.filters.stop_list
+
+    def test_automation_titled_pr_skipped_before_probe_and_diff(self) -> None:
+        """An automation-titled PR by a human author is excluded: no probe,
+        no size() completion GET, no diff fetch, no upsert."""
+        from harness.config import IngestFilterConfig
+        from harness.ingester.ingest import Ingester
+
+        pr = _make_raw_pr(1, author="vseanreesermsft")
+        pr = RawPR(**{**pr.__dict__, "title": "Merging internal commits for release/8.0"})
+
+        rate_status = RateLimitStatus(
+            remaining=5000,
+            reset_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            limit=5000,
+        )
+        mock_connector = MagicMock()
+        mock_connector.list_merged_prs.return_value = iter([pr])
+        mock_connector.rate_limit_status.return_value = rate_status
+
+        ingester = Ingester(MagicMock())
+        filters = IngestFilterConfig(
+            title_stop_patterns=("merging internal commits",)
+        )
+
+        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
+            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+                mock_repo_instance = MockRepoRepo.return_value
+                mock_repo_instance.upsert.return_value = MagicMock(id=1)
+                mock_repo_instance.get_op_state.return_value = None
+
+                ingester.run(
+                    connector=mock_connector,
+                    repo_full_name="owner/repo",
+                    project_name="test",
+                    repo_type="github",
+                    filters=filters,
+                )
+
+        assert MockPRRepo.return_value.exists.call_count == 0, "probe ran for filtered PR"
+        assert MockPRRepo.return_value.upsert.call_count == 0, "filtered PR was upserted"
+        mock_connector.fetch_diff.assert_not_called()

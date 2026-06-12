@@ -16,6 +16,32 @@ burning rate limit on PRs that will be excluded (Pattern 2 / Pitfall 10).
 
 from __future__ import annotations
 
+import re
+
+
+def is_automation_title(title: str, patterns: tuple[str, ...]) -> bool:
+    """Return True if the PR title matches a configured automation pattern.
+
+    Catches recurring automation PRs whose AUTHOR is not bot-suffixed (e.g.
+    internal-sync accounts producing "Merging internal commits for release/X"
+    or "[automated] Merge branch ..." titles). Patterns are regexes matched
+    case-insensitively anywhere in the title; configured via
+    ``ingest.title_stop_patterns`` — the default is empty (no opinion).
+
+    Like is_bot, this runs on cheap list-payload metadata BEFORE the probe
+    and any per-PR GET, so excluded PRs cost zero extra API calls.
+
+    Examples:
+        >>> is_automation_title("Merging internal commits for release/8.0",
+        ...                     ("merging internal commits",))
+        True
+        >>> is_automation_title("Fix SIGN cast", ("merging internal commits",))
+        False
+        >>> is_automation_title("anything", ())
+        False
+    """
+    return any(re.search(p, title, re.IGNORECASE) for p in patterns)
+
 
 def is_bot(author: str, stop_list: frozenset[str]) -> bool:
     """Return True if the author is a bot.
