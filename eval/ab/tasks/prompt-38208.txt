@@ -1,0 +1,10 @@
+ISSUE TITLE: EF1003: Also detect explicit calls to string.Format(...) and string.Concat(...)
+
+ISSUE BODY:
+### What problem are you trying to solve?
+
+Though uncommon, these patterns can be problematic
+
+### Describe the solution you'd like
+
+_No response_

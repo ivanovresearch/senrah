@@ -1,0 +1,80 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38252-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/SOLUTION.md"
+new file mode 100644
+index 0000000..16e27d3
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/SOLUTION.md"
+@@ -0,0 +1,21 @@
++# Solution for Issue #38252
++
++## Root Cause
++
++When a CLR property type changes (e.g., `int` to `long`) for a property mapped to a computed column via `HasComputedColumnSql(...)`, the `MigrationsModelDiffer` detects that `source.StoreType != target.StoreType` and emits an `AlterColumnOperation`. However, SQL Server (and other databases) do not allow `ALTER COLUMN` on computed columns — the column type is inferred from the SQL expression itself, not stored separately.
++
++The differ was not checking whether the store type difference was caused solely by a CLR type change on an otherwise identical computed column expression. Since the computed SQL expression is unchanged, no DDL change is needed in the database.
++
++## Change Description
++
++In `MigrationsModelDiffer.Diff(IColumn, IColumn, DiffContext)`, the `columnTypeChanged` variable is now set to `false` when:
++
++1. Both the source and target columns have the same non-null/non-whitespace computed column SQL expression, **and**
++2. `IsStored` has not changed between source and target.
++
++This ensures that a CLR type change on a computed column (where the SQL expression is unchanged) does not generate a spurious `AlterColumnOperation`. When the computed expression itself changes, the existing logic continues to emit the appropriate operation.
++
++## Files Edited
++
++- `src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs` — Added `isComputedColumnSqlUnchanged` guard so that `columnTypeChanged` is suppressed when both columns share the same computed SQL expression.
++- `test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs` — Added `Alter_column_clr_type_with_same_computed_expression_is_ignored` test that reproduces the exact scenario from the issue (`int` → `long` on a computed column) and asserts no operations are produced.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
+index 3d26327..d09e9ab 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
+@@ -1065,7 +1065,13 @@ private static bool EntityTypePathEquals(ITypeBase source, ITypeBase target, Dif
+         var targetMigrationsAnnotations = target.GetAnnotations();
+ 
+         var isNullableChanged = source.IsNullable != target.IsNullable;
+-        var columnTypeChanged = source.StoreType != target.StoreType;
++        // If the column is computed in both source and target with the same expression,
++        // the store type is inferred by the database and cannot be altered directly.
++        // A CLR type change (e.g. int -> long) must not trigger an AlterColumn for computed columns.
++        var isComputedColumnSqlUnchanged = !string.IsNullOrWhiteSpace(source.ComputedColumnSql)
++            && MultilineEquals(source.ComputedColumnSql, target.ComputedColumnSql)
++            && source.IsStored == target.IsStored;
++        var columnTypeChanged = source.StoreType != target.StoreType && !isComputedColumnSqlUnchanged;
+ 
+         if (!source.TryGetDefaultValue(out var sourceDefault))
+         {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
+index f3fd936..059cd56 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-control/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
+@@ -3025,6 +3025,29 @@ public void Alter_column_computed_expression()
+                 Assert.Equal("CreateCatamountName()", operation.ComputedColumnSql);
+             });
+ 
++    [Fact] // Issue #38252
++    public void Alter_column_clr_type_with_same_computed_expression_is_ignored()
++        => Execute(
++            source => source.Entity(
++                "FileData",
++                x =>
++                {
++                    x.ToTable("Files");
++                    x.Property<int>("FileDataId");
++                    x.Property<int>("FileSize")
++                        .HasComputedColumnSql("DATALENGTH([FileContents])");
++                }),
++            target => target.Entity(
++                "FileData",
++                x =>
++                {
++                    x.ToTable("Files");
++                    x.Property<int>("FileDataId");
++                    x.Property<long>("FileSize")
++                        .HasComputedColumnSql("DATALENGTH([FileContents])");
++                }),
++            result => Assert.Empty(result));
++
+     [Fact]
+     public void Alter_column_comment()
+         => Execute(

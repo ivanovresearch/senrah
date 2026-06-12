@@ -1,0 +1,12 @@
+{
+  "pr": 38226,
+  "issue": 17762,
+  "issue_title": "Query: Translate List.Exists",
+  "issue_body": "```C#\r\n        [ConditionalTheory]\r\n        [MemberData(nameof(IsAsyncData))]\r\n        public virtual Task Where_Join_Exists_Inequality(bool isAsync)\r\n        {\r\n            return AssertQuery<Customer>(\r\n                isAsync,\r\n                cs => cs.Where(c => c.CustomerID == \"ALFKI\" && c.Orders.Exists(o => o.OrderDate != new DateTime(2008, 10, 24))),\r\n                entryCount: 1);\r\n        }\r\n```",
+  "issue_state": "closed",
+  "merge_commit": "1c5cd69729c8ac7f5a3df766286db99f49dc6031",
+  "parents": [
+    "e4afabf3d42d601fe72cf307f177592adbefb998"
+  ],
+  "pr_title": "Translate List<T>.Exists to Queryable.Any"
+}

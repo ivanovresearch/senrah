@@ -1,0 +1,19 @@
+{
+  "pr": 38321,
+  "arm": "treatment",
+  "file_recall": 0.5,
+  "symbol_recall": 0.375,
+  "real_files": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs",
+    "test/EFCore.Relational.Specification.Tests/Query/AdHocJsonQueryRelationalTestBase.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
+  ],
+  "real_symbols": 24,
+  "symbols_hit": 9
+}

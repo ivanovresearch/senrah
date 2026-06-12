@@ -1,0 +1,94 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..8a12db1
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/SOLUTION.md"
+@@ -0,0 +1,31 @@
++# Solution for Issue #38226 — Query: Translate List.Exists
++
++## Root Cause
++
++`List<T>.Exists(Predicate<T> match)` is semantically equivalent to `IEnumerable<T>.Any(Func<T,bool> predicate)`, but EF Core's query normalizer had no rule to rewrite it. When used inside a LINQ query (e.g., `Where(c => c.Orders.Exists(o => ...))`), the expression tree reached the SQL translator without being recognized, causing a translation failure (client evaluation or exception).
++
++## Change Description
++
++Added a normalization rule in `QueryableMethodNormalizingExpressionVisitor.VisitMethodCall` that rewrites `List<T>.Exists(predicate)` to `Enumerable.Any(source, predicate)` before the expression reaches the SQL translation layer.
++
++The rule:
++- Matches instance method calls named `Exists` on `List<T>` (generic type definition check against `typeof(List<>)`).
++- Converts the `Predicate<T>` lambda argument to a `Func<T, bool>` lambda (same body/parameters, different delegate type) so the `Enumerable.Any` overload signature matches exactly.
++- Calls `VisitMethodCall` recursively on the rewritten call, which causes the existing `TryConvertEnumerableToQueryable` path to further rewrite it to `Queryable.Any(source.AsQueryable(), Expression<Func<T, bool>>)`, which is fully translatable to a SQL EXISTS subquery.
++
++A base-class test `List_Exists_over_navigation_translated_to_subquery` was added to `NorthwindWhereQueryTestBase` to cover the canonical scenario from the issue (filtering customers whose `Orders` navigation collection satisfies a predicate via `Exists`).
++
++## Files Edited
++
++- `src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs` — added normalization block after the `get_Item`→`ElementAt` block.
++- `test/EFCore.Specification.Tests/Query/NorthwindWhereQueryTestBase.cs` — added `List_Exists_over_navigation_translated_to_subquery` test.
++
++## Precedent Usage
++
++1. **Query: "translate List.Exists to SQL EXISTS subquery"** — returned PR #38168 (Translate Any() over byte array) with score below threshold (0.384). Not useful; that PR adds provider-specific byte-array `Any` translations, unrelated to the normalization layer fix needed here.
++
++2. **Query: "translate List Exists predicate to Any LINQ"** — again returned PR #38168 below threshold (0.420). Not useful for the same reason.
++
++3. **Query: "normalize Exists predicate Any collection method call rewrite"** — returned PR #37971 (Cosmos projection binding) below threshold (0.388). Not useful; unrelated topic.
++
++All precedent results were ignored as not useful. The fix was determined by reading the existing normalization patterns in `QueryableMethodNormalizingExpressionVisitor` directly (e.g., the `get_Item`→`ElementAt` and `ICollection.Contains`→`Queryable.Contains` rewrites) and following the same idiom.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
+index 3589fcc..630947e 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
+@@ -164,6 +164,34 @@ protected override Expression VisitMethodCall(MethodCallExpression methodCallExp
+                     index));
+         }
+ 
++        // Normalize List<T>.Exists(predicate) to Enumerable.Any(source, predicate)
++        // List<T>.Exists takes a Predicate<T> which is structurally identical to Func<T, bool>
++        if (methodCallExpression is
++            {
++                Method:
++                {
++                    Name: nameof(List<object>.Exists),
++                    IsStatic: false,
++                    DeclaringType: { IsGenericType: true } existsDeclaringType
++                },
++                Object: { } existsSource,
++                Arguments: [var existsPredicate]
++            }
++            && existsDeclaringType.GetGenericTypeDefinition() == typeof(List<>))
++        {
++            var elementType = existsSource.Type.GetSequenceType();
++            // Convert Predicate<T> lambda to Func<T, bool> lambda if needed
++            var predicate = existsPredicate is LambdaExpression lambdaExpression
++                ? Expression.Lambda(typeof(Func<,>).MakeGenericType(elementType, typeof(bool)), lambdaExpression.Body, lambdaExpression.Parameters)
++                : existsPredicate;
++
++            return VisitMethodCall(
++                Expression.Call(
++                    EnumerableMethods.AnyWithPredicate.MakeGenericMethod(elementType),
++                    existsSource,
++                    predicate));
++        }
++
+         Expression? visitedExpression = null;
+         if (method.DeclaringType == typeof(Enumerable))
+         {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.Specification.Tests/Query/NorthwindWhereQueryTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/test/EFCore.Specification.Tests/Query/NorthwindWhereQueryTestBase.cs"
+index 21649e4..34046c4 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.Specification.Tests/Query/NorthwindWhereQueryTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-treatment/test/EFCore.Specification.Tests/Query/NorthwindWhereQueryTestBase.cs"
+@@ -2090,6 +2090,13 @@ public virtual Task Simplifiable_coalesce_over_nullable(bool async)
+             ss => ss.Set<Order>().Where(o => o.OrderID == (orderId ?? 0)));
+     }
+ 
++    [Theory, MemberData(nameof(IsAsyncData))] // #38226
++    public virtual Task List_Exists_over_navigation_translated_to_subquery(bool async)
++        => AssertQuery(
++            async,
++            ss => ss.Set<Customer>().Where(c => c.Orders.Exists(o => o.OrderID > 11000)),
++            ss => ss.Set<Customer>().Where(c => c.Orders.Any(o => o.OrderID > 11000)));
++
+     #region Evaluation order of operators
+ 
+     [Theory, MemberData(nameof(IsAsyncData))]

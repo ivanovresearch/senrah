@@ -1,0 +1,108 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38226-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/SOLUTION.md"
+new file mode 100644
+index 0000000..4d70dbe
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/SOLUTION.md"
+@@ -0,0 +1,21 @@
++# Solution for Issue: Query: Translate List.Exists
++
++## Root Cause
++
++`List<T>.Exists(Predicate<T> match)` was not recognized by EF Core's query normalization pipeline, causing queries like `c.Orders.Exists(o => o.OrderDate != someDate)` to fail translation to SQL.
++
++The existing normalization visitor (`QueryableMethodNormalizingExpressionVisitor`) already handles similar collection method rewrites — for example, normalizing `list[x]` to `ElementAt(x)` and `ICollection<T>.Contains` to queryable `Contains` — but had no handler for `List<T>.Exists`.
++
++`List<T>.Exists(Predicate<T>)` is semantically identical to `Enumerable.Any<T>(IEnumerable<T>, Func<T, bool>)`. The only structural difference is that `Predicate<T>` and `Func<T, bool>` are different delegate types with the same signature.
++
++## Change Description
++
++Added a normalization branch in `QueryableMethodNormalizingExpressionVisitor.VisitMethodCall` (in `src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs`) that detects calls to `List<T>.Exists(predicate)` and rewrites them to `Enumerable.Any<T>(source, predicate)`.
++
++The predicate lambda is reconstructed with a `Func<T, bool>` delegate type (instead of `Predicate<T>`) so it is compatible with `EnumerableMethods.AnyWithPredicate`. The rewritten call then re-enters `VisitMethodCall`, which picks it up via the existing `TryConvertEnumerableToQueryable` path and converts it to `Queryable.Any`, which EF Core already knows how to translate to SQL `EXISTS`.
++
++## Files Edited
++
++- `src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs` — added `List<T>.Exists` → `Enumerable.Any` normalization
++- `test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs` — added `List_Exists_translated_to_Any` test
++- `test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs` — added SQL assertion for the new test
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
+index 3589fcc..93e732d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs"
+@@ -164,6 +164,33 @@ protected override Expression VisitMethodCall(MethodCallExpression methodCallExp
+                     index));
+         }
+ 
++        // Normalize List<T>.Exists(predicate) to Enumerable.Any<T>(source, predicate)
++        if (methodCallExpression is
++            {
++                Method:
++                {
++                    Name: nameof(List<object>.Exists),
++                    IsStatic: false,
++                    DeclaringType: { IsGenericType: true } existsDeclaringType
++                },
++                Object: { } existsSource,
++                Arguments: [var existsPredicate]
++            }
++            && existsDeclaringType.GetGenericTypeDefinition() == typeof(List<>))
++        {
++            var elementType = existsSource.Type.GetSequenceType();
++            // Convert Predicate<T> lambda to Func<T, bool> lambda (same body/params, different delegate type)
++            var predicateLambda = existsPredicate is LambdaExpression lambda
++                ? Expression.Lambda(typeof(Func<,>).MakeGenericType(elementType, typeof(bool)), lambda.Body, lambda.Parameters)
++                : existsPredicate;
++
++            return VisitMethodCall(
++                Expression.Call(
++                    EnumerableMethods.AnyWithPredicate.MakeGenericMethod(elementType),
++                    existsSource,
++                    predicateLambda));
++        }
++
+         Expression? visitedExpression = null;
+         if (method.DeclaringType == typeof(Enumerable))
+         {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs"
+index a1f0d9d..4fe890d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs"
+@@ -877,6 +877,12 @@ public virtual Task Any_with_multiple_conditions_still_uses_exists(bool async)
+             async,
+             ss => ss.Set<Customer>().Where(c => c.City == "London" && c.Orders.Any(o => o.EmployeeID == 1)));
+ 
++    [Theory, MemberData(nameof(IsAsyncData))]
++    public virtual Task List_Exists_translated_to_Any(bool async)
++        => AssertQuery(
++            async,
++            ss => ss.Set<Customer>().Where(c => c.Orders.Exists(o => o.OrderDate != new DateTime(2008, 10, 24))));
++
+     [Theory, MemberData(nameof(IsAsyncData))]
+     public virtual Task Any_on_distinct(bool async)
+         => AssertQuery(
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
+index a6d63a6..97ad9d4 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38226/test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38226-control/test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
+@@ -1621,6 +1621,21 @@ SELECT 1
+ """);
+     }
+ 
++    public override async Task List_Exists_translated_to_Any(bool async)
++    {
++        await base.List_Exists_translated_to_Any(async);
++
++        AssertSql(
++            """
++SELECT [c].[CustomerID], [c].[Address], [c].[City], [c].[CompanyName], [c].[ContactName], [c].[ContactTitle], [c].[Country], [c].[Fax], [c].[Phone], [c].[PostalCode], [c].[Region]
++FROM [Customers] AS [c]
++WHERE EXISTS (
++    SELECT 1
++    FROM [Orders] AS [o]
++    WHERE [c].[CustomerID] = [o].[CustomerID] AND ([o].[OrderDate] <> '2008-10-24T00:00:00.000' OR [o].[OrderDate] IS NULL))
++""");
++    }
++
+     public override async Task Any_on_distinct(bool async)
+     {
+         await base.Any_on_distinct(async);

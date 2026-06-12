@@ -1,0 +1,12 @@
+{
+  "pr": 38297,
+  "issue": 33854,
+  "issue_title": "Cosmos: support toplevel Any()",
+  "issue_body": "Test NorthwindMiscellaneousQueryCosmosTest.OrderBy_ThenBy_Any does the following:\n\n```c#\npublic virtual Task OrderBy_ThenBy_Any(bool async)\n    => AssertAny(\n        async,\n        ss => ss.Set<Customer>().OrderBy(c => c.CustomerID).ThenBy(c => c.ContactName));\n```\n\nThe top-level Any() means that we're meant to count the number of Customers in the database. We currently generate the following:\n\n```sql\nSELECT EXISTS (\n    SELECT 1\n    FROM root c\n    WHERE (c[\"Discriminator\"] = \"Customer\")) AS c\n```\n\nWhile this works in relational, Cosmos does not support uncorrelated subqueries; in other words, EXISTS can only work if the subquery source is an array property on the root JSON object (the Customer), but not on the Customers themselves.\n\nWe can probably make this work by translating to COUNT() > 0 instead. Or as @ajcvickers suggested, simply query the container with LIMIT 1 (and an empty projection). For example:\n\n```sql\nSELECT VALUE true FROM root c WHERE c.Id = 100 OFFSET 0 LIMIT 1\n```",
+  "issue_state": "closed",
+  "merge_commit": "d4cb3970dba7e8018cac934739ca12ac2eae5cd4",
+  "parents": [
+    "b423c887c962cd1c018b83644194af9a8483d025"
+  ],
+  "pr_title": "Cosmos: translate top-level Any() to LIMIT 1 instead of EXISTS"
+}

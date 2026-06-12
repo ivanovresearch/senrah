@@ -1,0 +1,12 @@
+{
+  "pr": 38208,
+  "issue": 37915,
+  "issue_title": "EF1003: Also detect explicit calls to string.Format(...) and string.Concat(...)",
+  "issue_body": "### What problem are you trying to solve?\n\nThough uncommon, these patterns can be problematic\n\n### Describe the solution you'd like\n\n_No response_",
+  "issue_state": "closed",
+  "merge_commit": "04b37f3ed41fd685a68c9402fe19871d2e20037a",
+  "parents": [
+    "1c5cd69729c8ac7f5a3df766286db99f49dc6031"
+  ],
+  "pr_title": "EF1003: Detect explicit string.Format/string.Concat in raw SQL APIs"
+}

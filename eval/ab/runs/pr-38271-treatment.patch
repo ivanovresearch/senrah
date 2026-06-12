@@ -1,0 +1,170 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..8b7e3fb
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/SOLUTION.md"
+@@ -0,0 +1,44 @@
++# SOLUTION
++
++## Root Cause
++
++When an index's properties change (e.g., fill factor, uniqueness, sort order), `MigrationsModelDiffer` generates a `DropIndexOperation` followed by a `CreateIndexOperation` for the same index. `SqlServerMigrationsSqlGenerator` was emitting these as two separate DDL statements: `DROP INDEX ... ON [Table]` followed by `CREATE ... INDEX ... ON [Table]`.
++
++SQL Server supports `CREATE INDEX ... WITH (DROP_EXISTING = ON)` which atomically replaces an existing index. This approach is superior because:
++- The old index remains available to queries while the new one is being built.
++- On large tables this avoids a window where the index is absent.
++- It is a single DDL statement instead of two.
++
++## Change Description
++
++### `src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs`
++Added `DropExisting = Prefix + "DropExisting"` — a migration-only annotation used to signal the SQL generator that a `CREATE INDEX` statement should include `DROP_EXISTING = ON`.
++
++### `src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs`
++**RewriteOperations (post-processing pass):** After the main temporal-table rewriting loop, a backward iteration over the final operations list collapses adjacent `DropIndexOperation` + `CreateIndexOperation` pairs that refer to the same index (same name, table, and schema). When a pair is found and the new index is not a full-text index, vector index, JSON index, or on a memory-optimized table (all cases that use non-standard DDL syntax incompatible with `DROP_EXISTING`), the `DropIndexOperation` is removed and the `CreateIndexOperation` is annotated with `DropExisting = true`.
++
++**IndexOptions:** When building the `WITH (...)` clause, `DROP_EXISTING = ON` is prepended to the options list when the `DropExisting` annotation is present.
++
++### `test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs`
++- Updated `Alter_index_make_unique` expected SQL: two-command DROP+CREATE → single `CREATE UNIQUE INDEX ... WITH (DROP_EXISTING = ON)`.
++- Updated `Alter_index_change_sort_order` expected SQL: two-command DROP+CREATE → single `CREATE INDEX ... WITH (DROP_EXISTING = ON)`.
++- Added `Alter_index_change_fill_factor` test that verifies changing only the fill factor of an existing index produces `CREATE INDEX ... WITH (DROP_EXISTING = ON, FILLFACTOR = 90)`.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs`
++- `src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs`
++- `test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs`
++
++## Precedent Usage
++
++**Query 1:** "SQL Server CREATE INDEX DROP_EXISTING ON instead of drop and recreate index migration"
++Result: BELOW THRESHOLD (score 0.415). Not useful — unrelated scaffolding PR.
++
++**Query 2:** "migrate index drop existing recreate SQL Server index annotation migration generator"
++Result: score 0.506, PR #37652 (full-text search catalog/index support). Useful for understanding how new index types are integrated (annotation names, generator dispatch, excluded from certain operations) but did not directly demonstrate the DROP_EXISTING pattern. The pattern of excluding special index types (full-text, vector) from standard DDL transformations was confirmed by examining this PR's approach.
++
++**Query 3:** "index rebuild migration SQL Server consolidate drop create single statement"
++Result: BELOW THRESHOLD (score 0.406). Not useful.
++
++Precedents were largely not applicable to this specific optimization; the implementation was derived directly from reading the existing code.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs"
+index fb93268..08da3b7 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs"
+@@ -67,6 +67,14 @@ public static class SqlServerAnnotationNames
+     /// </summary>
+     public const string DataCompression = Prefix + "DataCompression";
+ 
++    /// <summary>
++    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
++    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
++    ///     any release. You should only use it directly in your code with extreme caution and knowing that
++    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
++    /// </summary>
++    public const string DropExisting = Prefix + "DropExisting";
++
+     /// <summary>
+     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
+index a2fc0ea..4c66caf 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
+@@ -2164,6 +2164,11 @@ protected override void IndexOptions(MigrationOperation operation, IModel? model
+ 
+         var options = new List<string>();
+ 
++        if (operation[SqlServerAnnotationNames.DropExisting] is true)
++        {
++            options.Add("DROP_EXISTING = ON");
++        }
++
+         if (operation[SqlServerAnnotationNames.FillFactor] is int fillFactor)
+         {
+             options.Add("FILLFACTOR = " + fillFactor);
+@@ -3543,6 +3548,30 @@ static bool AnnotationsAreTheSame(ColumnOperation column, ColumnOperation oldCol
+                 temporalInformation.Value.SuppressTransaction);
+         }
+ 
++        // Collapse DropIndexOperation + CreateIndexOperation pairs for the same index into a single
++        // CREATE INDEX ... WITH (DROP_EXISTING = ON), which is more efficient and allows queries to
++        // continue using the old index while the new one is being built.
++        for (var i = operations.Count - 1; i >= 1; i--)
++        {
++            if (operations[i] is CreateIndexOperation createOp
++                && operations[i - 1] is DropIndexOperation dropOp
++                && string.Equals(dropOp.Name, createOp.Name, StringComparison.OrdinalIgnoreCase)
++                && string.Equals(dropOp.Table, createOp.Table, StringComparison.OrdinalIgnoreCase)
++                && string.Equals(dropOp.Schema, createOp.Schema, StringComparison.OrdinalIgnoreCase)
++                // Full-text indexes use a different DDL syntax that does not support DROP_EXISTING.
++                && createOp[SqlServerAnnotationNames.FullTextIndex] is null
++                // Vector indexes use CREATE VECTOR INDEX syntax that does not support DROP_EXISTING.
++                && createOp[SqlServerAnnotationNames.VectorIndexMetric] is null
++                // JSON indexes use CREATE JSON INDEX syntax that does not support DROP_EXISTING.
++                && createOp[RelationalAnnotationNames.JsonIndex] is null
++                // Memory-optimized tables use ALTER TABLE ... ADD INDEX and do not support DROP_EXISTING.
++                && !IsMemoryOptimized(createOp, model, createOp.Schema, createOp.Table))
++            {
++                createOp[SqlServerAnnotationNames.DropExisting] = true;
++                operations.RemoveAt(i - 1);
++            }
++        }
++
+         return operations;
+ 
+         static TemporalOperationInformation BuildTemporalInformationFromMigrationOperation(
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs"
+index aee2fbe..69058f6 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-treatment/test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs"
+@@ -2063,11 +2063,7 @@ public override async Task Alter_index_make_unique()
+ 
+         AssertSql(
+             """
+-DROP INDEX [IX_People_X] ON [People];
+-""",
+-            //
+-            """
+-CREATE UNIQUE INDEX [IX_People_X] ON [People] ([X]);
++CREATE UNIQUE INDEX [IX_People_X] ON [People] ([X]) WITH (DROP_EXISTING = ON);
+ """);
+     }
+ 
+@@ -2077,11 +2073,32 @@ public override async Task Alter_index_change_sort_order()
+ 
+         AssertSql(
+             """
+-DROP INDEX [IX_People_X_Y_Z] ON [People];
+-""",
+-            //
++CREATE INDEX [IX_People_X_Y_Z] ON [People] ([X], [Y] DESC, [Z]) WITH (DROP_EXISTING = ON);
++""");
++    }
++
++    [Fact]
++    public virtual async Task Alter_index_change_fill_factor()
++    {
++        await Test(
++            builder => builder.Entity(
++                "People", e =>
++                {
++                    e.Property<int>("Id");
++                    e.Property<int>("X");
++                }),
++            builder => builder.Entity("People").HasIndex("X").HasFillFactor(80),
++            builder => builder.Entity("People").HasIndex("X").HasFillFactor(90),
++            model =>
++            {
++                var table = Assert.Single(model.Tables);
++                var index = Assert.Single(table.Indexes);
++                Assert.Equal(90, index[SqlServerAnnotationNames.FillFactor]);
++            });
++
++        AssertSql(
+             """
+-CREATE INDEX [IX_People_X_Y_Z] ON [People] ([X], [Y] DESC, [Z]);
++CREATE INDEX [IX_People_X] ON [People] ([X]) WITH (DROP_EXISTING = ON, FILLFACTOR = 90);
+ """);
+     }
+ 

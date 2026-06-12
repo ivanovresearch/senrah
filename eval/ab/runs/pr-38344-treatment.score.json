@@ -1,0 +1,31 @@
+{
+  "pr": 38344,
+  "arm": "treatment",
+  "file_recall": 0.833,
+  "symbol_recall": 0.622,
+  "real_files": [
+    "src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs",
+    "test/EFCore.Sqlite.FunctionalTests/TestUtilities/SqliteTestEnvironment.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs",
+    "src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs"
+  ],
+  "real_symbols": 45,
+  "symbols_hit": 28
+}

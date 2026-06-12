@@ -1,0 +1,29 @@
+{
+  "pr": 38260,
+  "arm": "control",
+  "file_recall": 1.0,
+  "symbol_recall": 0.714,
+  "real_files": [
+    "src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs",
+    "test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs",
+    "test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs",
+    "test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
+  ],
+  "real_symbols": 21,
+  "symbols_hit": 15
+}

@@ -1,0 +1,102 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..40fb9ad
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/SOLUTION.md"
+@@ -0,0 +1,41 @@
++# Solution
++
++## Root Cause
++
++`MigrationsModelDiffer.Diff(IColumn, IColumn, DiffContext)` computes `columnTypeChanged = source.StoreType != target.StoreType` unconditionally. When a user changes the CLR type of a property mapped to a computed column (e.g., `int` → `long` because the SQL expression `DATALENGTH(...)` actually returns `BIGINT`), EF Core maps that to a different store type, so `columnTypeChanged` becomes `true` and an `AlterColumnOperation` is emitted.
++
++SQL Server (and other databases) reject `ALTER COLUMN` on a computed column with:
++> Cannot alter column 'FileSize' because it is 'COMPUTED'.
++
++The type of a computed column is entirely derived from its SQL expression; there is no separately stored column type to alter.
++
++## Fix
++
++In `MigrationsModelDiffer.Diff`, before evaluating `columnTypeChanged`, detect whether the computed column SQL is present on both source/target and is unchanged. If so, the CLR-side store type difference is irrelevant (it's a modelling artifact, not a real schema change), and `columnTypeChanged` is set to `false`.
++
++```csharp
++// If the column has the same computed column SQL in both source and target, the column type is
++// derived from the SQL expression and cannot be changed via ALTER COLUMN. Ignore CLR-side type
++// changes in that case to avoid generating an ALTER COLUMN that the database would reject.
++var isComputedColumnSqlUnchanged = !string.IsNullOrWhiteSpace(source.ComputedColumnSql)
++    && MultilineEquals(source.ComputedColumnSql, target.ComputedColumnSql);
++var columnTypeChanged = !isComputedColumnSqlUnchanged && source.StoreType != target.StoreType;
++```
++
++When the computed SQL *does* change, an `AlterColumnOperation` is still produced (via the `!MultilineEquals(source.ComputedColumnSql, target.ComputedColumnSql)` branch in the condition, line 1088), so the existing test `Alter_column_computed_expression` continues to pass.
++
++## Files Edited
++
++- `src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs`  
++  Modified `Diff(IColumn, IColumn, DiffContext)` — added `isComputedColumnSqlUnchanged` guard before computing `columnTypeChanged`.
++
++- `test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs`  
++  Added `Alter_column_clr_type_only_with_unchanged_computed_expression_is_noop` — verifies that changing a CLR type from `int` to `long` on a property with unchanged `HasComputedColumnSql(...)` produces zero migration operations.
++
++## Precedent Usage
++
++### Query 1: `"migration alter column computed column type change skip"`
++Result: No results above threshold (best score 0.395, BELOW THRESHOLD). **Ignored — not useful.**
++
++### Query 2: `"computed column alter column migration sql server"`
++Result: PR #38019 "Strip identity annotations from temporal history table column operations" (score 0.487). Related in spirit (skipping an invalid ALTER COLUMN operation), but for identity columns on temporal tables. **Loosely informed the approach** of suppressing the operation at the differ level rather than the SQL generator level, but the specific fix was derived from reading the code directly.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
+index 3d26327..5d50e07 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs"
+@@ -1065,7 +1065,12 @@ private static bool EntityTypePathEquals(ITypeBase source, ITypeBase target, Dif
+         var targetMigrationsAnnotations = target.GetAnnotations();
+ 
+         var isNullableChanged = source.IsNullable != target.IsNullable;
+-        var columnTypeChanged = source.StoreType != target.StoreType;
++        // If the column has the same computed column SQL in both source and target, the column type is
++        // derived from the SQL expression and cannot be changed via ALTER COLUMN. Ignore CLR-side type
++        // changes in that case to avoid generating an ALTER COLUMN that the database would reject.
++        var isComputedColumnSqlUnchanged = !string.IsNullOrWhiteSpace(source.ComputedColumnSql)
++            && MultilineEquals(source.ComputedColumnSql, target.ComputedColumnSql);
++        var columnTypeChanged = !isComputedColumnSqlUnchanged && source.StoreType != target.StoreType;
+ 
+         if (!source.TryGetDefaultValue(out var sourceDefault))
+         {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
+index f3fd936..16b0b9f 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38252/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38252-treatment/test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
+@@ -3025,6 +3025,32 @@ public void Alter_column_computed_expression()
+                 Assert.Equal("CreateCatamountName()", operation.ComputedColumnSql);
+             });
+ 
++    [Fact] // Issue #38252
++    public void Alter_column_clr_type_only_with_unchanged_computed_expression_is_noop()
++        => Execute(
++            source => source.Entity(
++                "FileData",
++                x =>
++                {
++                    x.ToTable("Files");
++                    x.Property<int>("FileDataId");
++                    x.Property<byte[]>("FileContents");
++                    x.Property<int>("FileSize")
++                        .HasComputedColumnSql("DATALENGTH([FileContents])");
++                }),
++            target => target.Entity(
++                "FileData",
++                x =>
++                {
++                    x.ToTable("Files");
++                    x.Property<int>("FileDataId");
++                    x.Property<byte[]>("FileContents");
++                    // CLR type changed int -> long but the computed SQL is the same
++                    x.Property<long>("FileSize")
++                        .HasComputedColumnSql("DATALENGTH([FileContents])");
++                }),
++            operations => Assert.Equal(0, operations.Count));
++
+     [Fact]
+     public void Alter_column_comment()
+         => Execute(

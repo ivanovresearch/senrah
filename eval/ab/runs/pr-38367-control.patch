@@ -1,0 +1,362 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38367-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/SOLUTION.md"
+new file mode 100644
+index 0000000..494c4e8
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/SOLUTION.md"
+@@ -0,0 +1,65 @@
++# Solution: Multiple complex properties of the same ComplexType in IUpdateAdapter.CreateEntry
++
++## Root Cause
++
++`InternalEntityEntry` has a constructor that accepts an `IDictionary<string, object?>` of property
++values and materializes the entity from them. Internally it iterates
++`entityType.GetFlattenedProperties()` and looks up each property by `property.Name` in the
++dictionary.
++
++When an entity has **two or more properties of the same ComplexType** (e.g. `TaxInfoExtended`
++and `TaxInfoExtended2`, both of type `TaxInfoExtended`), the flattened list contains two
++properties named `"CodeExtended"` — one from each complex property. Because both have the same
++`property.Name`, the dictionary lookup finds the same value (or no value) for both, making it
++impossible for callers to supply distinct values.
++
++The same flaw existed in `ShadowValuesFactoryFactory`, which generates the compiled expression
++that populates shadow-property values from the same kind of dictionary.
++
++## Change Description
++
++### `src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs`
++
++Replaced the direct `values.TryGetValue(property.Name, ...)` lookup with a new helper method
++`TryGetValueFromDictionary` that resolves values in three stages, in order:
++
++1. **Path-qualified key** (preferred, unambiguous): e.g. `"TaxInfoExtended.CodeExtended"` vs
++   `"TaxInfoExtended2.CodeExtended"`. The path is built by walking up the `DeclaringType` chain
++   and prepending each `ComplexProperty.Name`.
++2. **Complex CLR-object extraction**: if the values dictionary holds a CLR object under the root
++   complex-property name (e.g. `"TaxInfoExtended"` → the `TaxInfoExtended` CLR instance), the
++   scalar value is read from that object using the property's compiled getter. This is the format
++   produced by `EntityType.GetSeedData()` and consumed by the InMemory and Cosmos seed-data paths.
++3. **Leaf name fallback**: for backward compatibility with callers that use a simple flat key and
++   have no ambiguity (only one complex property of a given type).
++
++Two private static helper methods were added: `GetPropertyPath` and `TryGetValueFromComplexObject`.
++
++### `src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs`
++
++The compiled expression generated for shadow-property lookup was also using `property.Name`
++directly. Changed `CreateReadShadowValueExpression` to call a new private `GetPropertyPath`
++helper so shadow properties declared on complex types use the same path-qualified key convention.
++
++### `src/EFCore/Update/IUpdateAdapter.cs`
++
++Updated the XML doc comment on `CreateEntry` to document the supported key formats for complex
++type properties.
++
++### `test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs`
++
++Added two new tests:
++
++* `CreateEntry_with_path_qualified_keys_distinguishes_multiple_complex_properties_of_same_type` —
++  verifies that path-qualified keys (e.g. `"TaxInfoExtended.CodeExtended"`) correctly populate
++  distinct scalar values for two complex properties sharing the same CLR type.
++* `CreateEntry_with_complex_clr_objects_in_dict_populates_complex_type_values` — verifies that
++  CLR objects stored under the complex property name (the `GetSeedData` format) are also correctly
++  decomposed and assigned.
++
++## Files Edited
++
++- `src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs`
++- `src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs`
++- `src/EFCore/Update/IUpdateAdapter.cs`
++- `test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs`
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
+index 7f56a25..44f2524 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
+@@ -74,7 +74,7 @@ public sealed partial class InternalEntityEntry : InternalEntryBase, IUpdateEntr
+                 continue;
+             }
+ 
+-            valuesArray[index] = values.TryGetValue(property.Name, out var value)
++            valuesArray[index] = TryGetValueFromDictionary(property, values, out var value)
+                 ? value
+                 : property.Sentinel;
+         }
+@@ -83,6 +83,105 @@ public sealed partial class InternalEntityEntry : InternalEntryBase, IUpdateEntr
+             new MaterializationContext(new ValueBuffer(valuesArray), stateManager.Context));
+     }
+ 
++    private static bool TryGetValueFromDictionary(
++        IProperty property,
++        IDictionary<string, object?> values,
++        out object? value)
++    {
++        // Build the path-qualified key for properties declared on complex types.
++        // For example, a property "CodeExtended" on complex type "TaxInfoExtended" has the
++        // path-qualified key "TaxInfoExtended.CodeExtended", which distinguishes it from the same
++        // property on a second complex property of the same type (e.g. "TaxInfoExtended2.CodeExtended").
++        if (property.DeclaringType is IComplexType)
++        {
++            // Try path-qualified key first (e.g. "TaxInfoExtended.CodeExtended").
++            var pathKey = GetPropertyPath(property);
++            if (values.TryGetValue(pathKey, out value))
++            {
++                return true;
++            }
++
++            // Try to extract the value from a complex CLR object stored in the dictionary under the
++            // root complex property name (e.g. "TaxInfoExtended" -> CLR object).
++            if (TryGetValueFromComplexObject(property, values, out value))
++            {
++                return true;
++            }
++
++            // Fall back to leaf name only for backward compatibility with callers that use simple
++            // (non-ambiguous) flat keys.
++            return values.TryGetValue(property.Name, out value);
++        }
++
++        return values.TryGetValue(property.Name, out value);
++    }
++
++    private static string GetPropertyPath(IProperty property)
++    {
++        var name = property.Name;
++        var declaringType = property.DeclaringType;
++        while (declaringType is IComplexType complexType)
++        {
++            name = complexType.ComplexProperty.Name + "." + name;
++            declaringType = complexType.ComplexProperty.DeclaringType;
++        }
++
++        return name;
++    }
++
++    private static bool TryGetValueFromComplexObject(
++        IProperty property,
++        IDictionary<string, object?> values,
++        out object? value)
++    {
++        // Walk up the complex type chain to collect the path from root to leaf.
++        var chain = new List<IComplexProperty>();
++        var declaringType = property.DeclaringType;
++        while (declaringType is IComplexType complexType)
++        {
++            chain.Insert(0, complexType.ComplexProperty);
++            declaringType = complexType.ComplexProperty.DeclaringType;
++        }
++
++        // Look up the root complex property object in the values dictionary.
++        // If the root complex property is a shadow property, it has no CLR backing and cannot be used.
++        if (chain[0].IsShadowProperty()
++            || !values.TryGetValue(chain[0].Name, out var complexObject)
++            || complexObject == null)
++        {
++            value = null;
++            return false;
++        }
++
++        // Walk down the chain through any nested complex types.
++        for (var i = 1; i < chain.Count; i++)
++        {
++            if (chain[i].IsShadowProperty())
++            {
++                value = null;
++                return false;
++            }
++
++            complexObject = chain[i].GetGetter().GetClrValue(complexObject);
++            if (complexObject == null)
++            {
++                value = null;
++                return false;
++            }
++        }
++
++        // Read the leaf scalar property from the innermost complex type object.
++        // Shadow properties have no CLR backing, so they cannot be extracted from a CLR object.
++        if (property.IsShadowProperty())
++        {
++            value = null;
++            return false;
++        }
++
++        value = property.GetGetter().GetClrValue(complexObject);
++        return true;
++    }
++
+     /// <summary>
+     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
+index 58c3387..06b6991 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
+@@ -99,13 +99,14 @@ protected override bool UseEntityVariable
+                     property.ClrType);
+         }
+ 
++        var key = GetPropertyPath(property);
+         return Expression.Condition(
+-            Expression.Call(parameter, PropertyAccessorsFactory.ContainsKeyMethod, Expression.Constant(property.Name)),
++            Expression.Call(parameter, PropertyAccessorsFactory.ContainsKeyMethod, Expression.Constant(key)),
+             Expression.Convert(
+                 Expression.MakeIndex(
+                     parameter,
+                     DictionaryIndexer,
+-                    [Expression.Constant(property.Name)]),
++                    [Expression.Constant(key)]),
+                 property.ClrType),
+             Expression.Constant(property.Sentinel, property.ClrType));
+     }
+@@ -120,4 +121,17 @@ protected override bool UseEntityVariable
+         Expression? parameter,
+         IPropertyBase property)
+         => CreateReadShadowValueExpression(parameter, property);
++
++    private static string GetPropertyPath(IPropertyBase property)
++    {
++        var name = property.Name;
++        var declaringType = property.DeclaringType;
++        while (declaringType is IComplexType complexType)
++        {
++            name = complexType.ComplexProperty.Name + "." + name;
++            declaringType = complexType.ComplexProperty.DeclaringType;
++        }
++
++        return name;
++    }
+ }
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Update/IUpdateAdapter.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/Update/IUpdateAdapter.cs"
+index 514dd3b..96de324 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Update/IUpdateAdapter.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/src/EFCore/Update/IUpdateAdapter.cs"
+@@ -114,7 +114,14 @@ public interface IUpdateAdapter
+     /// <summary>
+     ///     Creates a new entry with the given property values for the given entity type.
+     /// </summary>
+-    /// <param name="values">A dictionary of property names to values.</param>
++    /// <param name="values">
++    ///     A dictionary of property names to values. For properties declared directly on the entity type,
++    ///     use the simple property name as the key. For properties on complex types, use the path-qualified
++    ///     name (e.g. <c>"ComplexPropName.PropertyName"</c> or <c>"ComplexA.ComplexB.PropertyName"</c> for
++    ///     nested complex types) to uniquely identify the property when there are multiple complex properties
++    ///     of the same type. Alternatively, a complex property's CLR object may be stored in the dictionary
++    ///     under the complex property name and its scalar values will be extracted automatically.
++    /// </param>
+     /// <param name="entityType">The entity type.</param>
+     /// <returns>The created entry.</returns>
+     IUpdateEntry CreateEntry(IDictionary<string, object?> values, IEntityType entityType);
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs"
+index e6f54e2..b36ba2d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-control/test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs"
+@@ -841,4 +841,108 @@ private record NestedItem
+     {
+         public string Name { get; init; } = "";
+     }
++
++    [Fact]
++    public void CreateEntry_with_path_qualified_keys_distinguishes_multiple_complex_properties_of_same_type()
++    {
++        var model = CreateModelWithDuplicateComplexType();
++        var entityType = model.FindEntityType(typeof(TaxInfo))!;
++
++        var serviceProvider = InMemoryTestHelpers.Instance.CreateContextServices(model);
++        var stateManager = serviceProvider.GetRequiredService<IStateManager>();
++
++        // Callers must use path-qualified keys (e.g. "TaxInfoExtended.CodeExtended") to distinguish
++        // between properties from multiple complex properties of the same ComplexType.
++        var values = new Dictionary<string, object?>
++        {
++            { "TaxInfoId", 1 },
++            { "Code", 'A' },
++            { "Percentage", 12.5m },
++            { "TaxInfoExtended.CodeExtended", 10 },
++            { "TaxInfoExtended.PercentageExtended", 0.1m },
++            { "TaxInfoExtended2.CodeExtended", 20 },
++            { "TaxInfoExtended2.PercentageExtended", 0.2m },
++            { "ExtraValue", 99 },
++        };
++
++        var entry = stateManager.CreateEntry(values, entityType);
++
++        var taxInfoExtended = entityType.FindComplexProperty(nameof(TaxInfo.TaxInfoExtended))!;
++        var taxInfoExtended2 = entityType.FindComplexProperty(nameof(TaxInfo.TaxInfoExtended2))!;
++        var codeExtended1 = taxInfoExtended.ComplexType.FindProperty(nameof(TaxInfoExtended.CodeExtended))!;
++        var codeExtended2 = taxInfoExtended2.ComplexType.FindProperty(nameof(TaxInfoExtended.CodeExtended))!;
++        var percentageExtended1 = taxInfoExtended.ComplexType.FindProperty(nameof(TaxInfoExtended.PercentageExtended))!;
++        var percentageExtended2 = taxInfoExtended2.ComplexType.FindProperty(nameof(TaxInfoExtended.PercentageExtended))!;
++
++        Assert.Equal(10, entry.GetCurrentValue(codeExtended1));
++        Assert.Equal(0.1m, entry.GetCurrentValue(percentageExtended1));
++        Assert.Equal(20, entry.GetCurrentValue(codeExtended2));
++        Assert.Equal(0.2m, entry.GetCurrentValue(percentageExtended2));
++    }
++
++    [Fact]
++    public void CreateEntry_with_complex_clr_objects_in_dict_populates_complex_type_values()
++    {
++        var model = CreateModelWithDuplicateComplexType();
++        var entityType = model.FindEntityType(typeof(TaxInfo))!;
++
++        var serviceProvider = InMemoryTestHelpers.Instance.CreateContextServices(model);
++        var stateManager = serviceProvider.GetRequiredService<IStateManager>();
++
++        // Callers may also pass CLR objects for complex properties (the format produced by GetSeedData).
++        var ext1 = new TaxInfoExtended { CodeExtended = 10, PercentageExtended = 0.1m };
++        var ext2 = new TaxInfoExtended { CodeExtended = 20, PercentageExtended = 0.2m };
++        var values = new Dictionary<string, object?>
++        {
++            { "TaxInfoId", 1 },
++            { "Code", 'A' },
++            { "Percentage", 12.5m },
++            { "TaxInfoExtended", ext1 },
++            { "TaxInfoExtended2", ext2 },
++            { "ExtraValue", 99 },
++        };
++
++        var entry = stateManager.CreateEntry(values, entityType);
++
++        var taxInfoExtended = entityType.FindComplexProperty(nameof(TaxInfo.TaxInfoExtended))!;
++        var taxInfoExtended2 = entityType.FindComplexProperty(nameof(TaxInfo.TaxInfoExtended2))!;
++        var codeExtended1 = taxInfoExtended.ComplexType.FindProperty(nameof(TaxInfoExtended.CodeExtended))!;
++        var codeExtended2 = taxInfoExtended2.ComplexType.FindProperty(nameof(TaxInfoExtended.CodeExtended))!;
++        var percentageExtended1 = taxInfoExtended.ComplexType.FindProperty(nameof(TaxInfoExtended.PercentageExtended))!;
++        var percentageExtended2 = taxInfoExtended2.ComplexType.FindProperty(nameof(TaxInfoExtended.PercentageExtended))!;
++
++        Assert.Equal(10, entry.GetCurrentValue(codeExtended1));
++        Assert.Equal(0.1m, entry.GetCurrentValue(percentageExtended1));
++        Assert.Equal(20, entry.GetCurrentValue(codeExtended2));
++        Assert.Equal(0.2m, entry.GetCurrentValue(percentageExtended2));
++    }
++
++    private static IModel CreateModelWithDuplicateComplexType()
++    {
++        var modelBuilder = InMemoryTestHelpers.Instance.CreateConventionBuilder();
++
++        modelBuilder.Entity<TaxInfo>(eb =>
++        {
++            eb.ComplexProperty(e => e.TaxInfoExtended);
++            eb.ComplexProperty(e => e.TaxInfoExtended2);
++        });
++
++        return modelBuilder.FinalizeModel();
++    }
++
++    private class TaxInfo
++    {
++        public int TaxInfoId { get; set; }
++        public char Code { get; set; }
++        public decimal Percentage { get; set; }
++        public TaxInfoExtended TaxInfoExtended { get; set; } = new();
++        public TaxInfoExtended TaxInfoExtended2 { get; set; } = new();
++        public int ExtraValue { get; set; }
++    }
++
++    private class TaxInfoExtended
++    {
++        public int CodeExtended { get; set; }
++        public decimal PercentageExtended { get; set; }
++    }
+ }

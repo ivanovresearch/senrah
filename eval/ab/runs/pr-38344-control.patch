@@ -1,0 +1,515 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38344-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/SOLUTION.md"
+new file mode 100644
+index 0000000..6656e66
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/SOLUTION.md"
+@@ -0,0 +1,58 @@
++# Solution: Support ORDER BY in SQLite aggregate functions (PR #38344)
++
++## Root Cause
++
++SQLite 3.44.0 (released October 2023) added support for an `ORDER BY` clause inside aggregate function calls, e.g. `group_concat(x, sep ORDER BY x ASC)`. The EF Core SQLite provider was unaware of this capability: `SqliteStringAggregateMethodTranslator` unconditionally returned `null` (refusing translation) whenever `source.Orderings.Count > 0`, forcing client-side evaluation and silently producing wrong or unordered results for LINQ queries like:
++
++```csharp
++.GroupBy(c => c.Int)
++.Select(g => new { Key = g.Key, Strings = string.Join("|", g.OrderByDescending(e => e.Id).Select(e => e.String)) })
++```
++
++## Change Description
++
++### New expression type
++**`src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs`** (new file)
++
++A new `SqliteAggregateFunctionExpression : SqlExpression` that carries a function name, arguments, and a list of `OrderingExpression`s. This mirrors `SqlServerAggregateFunctionExpression` but targets the SQLite `func(args ORDER BY ...)` syntax instead of SQL Server's `WITHIN GROUP (ORDER BY ...)`.
++
++### Translator update
++**`src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs`**
++
++Removed the early `return null` guard when `source.Orderings.Count > 0`. When orderings are present, the translator now produces a `SqliteAggregateFunctionExpression`; otherwise it continues to produce a plain `SqlFunctionExpression` (no behaviour change for the no-ordering path).
++
++### SQL generation
++**`src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs`**
++
++Added `VisitSqliteAggregateFunction` that emits `name(arg1, arg2 ORDER BY col1 ASC, col2 DESC)`. The new case is dispatched from `VisitExtension`.
++
++### Nullability processor
++**`src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs`**
++
++Added `VisitSqliteAggregateFunction` that visits arguments and orderings, forwarding nullability from `IsNullable`, matching the pattern used by `SqlServerSqlNullabilityProcessor`.
++
++### Type mapping factory
++**`src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs`**
++
++Added a `SqliteAggregateFunctionExpression` arm to `ApplyTypeMapping` that delegates to the expression's own `ApplyTypeMapping` method, consistent with how SQL Server handles its aggregate expression.
++
++### Test update
++**`test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs`**
++
++Updated `Join_with_ordering` test: removed the "does client evaluation" comment and replaced the client-eval SQL with the expected server-side SQL:
++```sql
++SELECT "b"."Int" AS "Key", COALESCE(group_concat("b"."String", '|' ORDER BY "b"."Id" DESC), '') AS "Strings"
++FROM "BasicTypesEntities" AS "b"
++GROUP BY "b"."Int"
++```
++
++## Files Edited
++
++| File | Change |
++|------|--------|
++| `src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs` | **New** — expression node for aggregate functions with ORDER BY |
++| `src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs` | Use `SqliteAggregateFunctionExpression` when orderings are present |
++| `src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs` | Emit `func(args ORDER BY ...)` SQL |
++| `src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs` | Visit new expression type |
++| `src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs` | Handle type mapping for new expression |
++| `test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs` | Update `Join_with_ordering` expected SQL |
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs"
+new file mode 100644
+index 0000000..5879772
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqlExpressions/SqliteAggregateFunctionExpression.cs"
+@@ -0,0 +1,225 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
++
++// ReSharper disable once CheckNamespace
++namespace Microsoft.EntityFrameworkCore.Sqlite.Query.Internal;
++
++/// <summary>
++///     <para>
++///         An expression that represents an aggregate function call with an optional ORDER BY clause in a SQL tree.
++///         This is used for SQLite aggregate functions that support ORDER BY inside the function (e.g.
++///         <c>group_concat(x, sep ORDER BY x)</c>), available since SQLite 3.44.0.
++///     </para>
++///     <para>
++///         This type is typically used by database providers (and other extensions). It is generally
++///         not used in application code.
++///     </para>
++/// </summary>
++public class SqliteAggregateFunctionExpression : SqlExpression
++{
++    private static ConstructorInfo? _quotingConstructor;
++
++    /// <summary>
++    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
++    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
++    ///     any release. You should only use it directly in your code with extreme caution and knowing that
++    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
++    /// </summary>
++    public SqliteAggregateFunctionExpression(
++        string name,
++        IReadOnlyList<SqlExpression> arguments,
++        IReadOnlyList<OrderingExpression> orderings,
++        bool nullable,
++        IEnumerable<bool> argumentsPropagateNullability,
++        Type type,
++        RelationalTypeMapping? typeMapping)
++        : base(type, typeMapping)
++    {
++        Name = name;
++        Arguments = arguments.ToList();
++        Orderings = orderings;
++        IsNullable = nullable;
++        ArgumentsPropagateNullability = argumentsPropagateNullability.ToList();
++    }
++
++    /// <summary>
++    ///     The name of the aggregate function.
++    /// </summary>
++    public virtual string Name { get; }
++
++    /// <summary>
++    ///     The list of arguments of this aggregate function.
++    /// </summary>
++    public virtual IReadOnlyList<SqlExpression> Arguments { get; }
++
++    /// <summary>
++    ///     The list of ordering expressions used to order input rows.
++    /// </summary>
++    public virtual IReadOnlyList<OrderingExpression> Orderings { get; }
++
++    /// <summary>
++    ///     A bool value indicating if the function can return null result.
++    /// </summary>
++    public virtual bool IsNullable { get; }
++
++    /// <summary>
++    ///     A list of bool values indicating whether individual arguments propagate null to the result.
++    /// </summary>
++    public virtual IReadOnlyList<bool> ArgumentsPropagateNullability { get; }
++
++    /// <inheritdoc />
++    protected override Expression VisitChildren(ExpressionVisitor visitor)
++    {
++        SqlExpression[]? arguments = null;
++        for (var i = 0; i < Arguments.Count; i++)
++        {
++            var visitedArgument = (SqlExpression)visitor.Visit(Arguments[i]);
++            if (visitedArgument != Arguments[i] && arguments is null)
++            {
++                arguments = new SqlExpression[Arguments.Count];
++
++                for (var j = 0; j < i; j++)
++                {
++                    arguments[j] = Arguments[j];
++                }
++            }
++
++            if (arguments is not null)
++            {
++                arguments[i] = visitedArgument;
++            }
++        }
++
++        OrderingExpression[]? orderings = null;
++        for (var i = 0; i < Orderings.Count; i++)
++        {
++            var visitedOrdering = (OrderingExpression)visitor.Visit(Orderings[i]);
++            if (visitedOrdering != Orderings[i] && orderings is null)
++            {
++                orderings = new OrderingExpression[Orderings.Count];
++
++                for (var j = 0; j < i; j++)
++                {
++                    orderings[j] = Orderings[j];
++                }
++            }
++
++            if (orderings is not null)
++            {
++                orderings[i] = visitedOrdering;
++            }
++        }
++
++        return arguments is not null || orderings is not null
++            ? new SqliteAggregateFunctionExpression(
++                Name,
++                arguments ?? Arguments,
++                orderings ?? Orderings,
++                IsNullable,
++                ArgumentsPropagateNullability,
++                Type,
++                TypeMapping)
++            : this;
++    }
++
++    /// <summary>
++    ///     Applies supplied type mapping to this expression.
++    /// </summary>
++    /// <param name="typeMapping">A relational type mapping to apply.</param>
++    /// <returns>A new expression which has supplied type mapping.</returns>
++    public virtual SqliteAggregateFunctionExpression ApplyTypeMapping(RelationalTypeMapping? typeMapping)
++        => new(
++            Name,
++            Arguments,
++            Orderings,
++            IsNullable,
++            ArgumentsPropagateNullability,
++            Type,
++            typeMapping ?? TypeMapping);
++
++    /// <summary>
++    ///     Creates a new expression that is like this one, but using the supplied children. If all of the children are the same, it will
++    ///     return this expression.
++    /// </summary>
++    /// <param name="arguments">The <see cref="Arguments" /> property of the result.</param>
++    /// <param name="orderings">The <see cref="Orderings" /> property of the result.</param>
++    /// <returns>This expression if no children changed, or an expression with the updated children.</returns>
++    public virtual SqliteAggregateFunctionExpression Update(
++        IReadOnlyList<SqlExpression> arguments,
++        IReadOnlyList<OrderingExpression> orderings)
++        => (ReferenceEquals(arguments, Arguments) || arguments.SequenceEqual(Arguments))
++            && (ReferenceEquals(orderings, Orderings) || orderings.SequenceEqual(Orderings))
++                ? this
++                : new SqliteAggregateFunctionExpression(
++                    Name,
++                    arguments,
++                    orderings,
++                    IsNullable,
++                    ArgumentsPropagateNullability,
++                    Type,
++                    TypeMapping);
++
++    /// <inheritdoc />
++    public override Expression Quote()
++        => New(
++            _quotingConstructor ??= typeof(SqliteAggregateFunctionExpression).GetConstructor(
++            [
++                typeof(string), typeof(IReadOnlyList<SqlExpression>), typeof(IReadOnlyList<OrderingExpression>), typeof(bool),
++                typeof(IEnumerable<bool>), typeof(Type), typeof(RelationalTypeMapping)
++            ])!,
++            Constant(Name),
++            NewArrayInit(typeof(SqlExpression), initializers: Arguments.Select(a => a.Quote())),
++            NewArrayInit(typeof(OrderingExpression), Orderings.Select(o => o.Quote())),
++            Constant(IsNullable),
++            NewArrayInit(typeof(bool), initializers: ArgumentsPropagateNullability.Select(n => Constant(n))),
++            Constant(Type),
++            RelationalExpressionQuotingUtilities.QuoteTypeMapping(TypeMapping));
++
++    /// <inheritdoc />
++    protected override void Print(ExpressionPrinter expressionPrinter)
++    {
++        expressionPrinter.Append(Name).Append("(");
++        expressionPrinter.VisitCollection(Arguments);
++
++        if (Orderings.Count > 0)
++        {
++            expressionPrinter.Append(" ORDER BY ");
++            expressionPrinter.VisitCollection(Orderings);
++        }
++
++        expressionPrinter.Append(")");
++    }
++
++    /// <inheritdoc />
++    public override bool Equals(object? obj)
++        => obj is SqliteAggregateFunctionExpression other && Equals(other);
++
++    private bool Equals(SqliteAggregateFunctionExpression other)
++        => ReferenceEquals(this, other)
++            || (base.Equals(other)
++                && Name == other.Name
++                && Arguments.SequenceEqual(other.Arguments)
++                && Orderings.SequenceEqual(other.Orderings));
++
++    /// <inheritdoc />
++    public override int GetHashCode()
++    {
++        var hash = new HashCode();
++        hash.Add(base.GetHashCode());
++        hash.Add(Name);
++
++        for (var i = 0; i < Arguments.Count; i++)
++        {
++            hash.Add(Arguments[i]);
++        }
++
++        for (var i = 0; i < Orderings.Count; i++)
++        {
++            hash.Add(Orderings[i]);
++        }
++
++        return hash.ToHashCode();
++    }
++}
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs"
+index 26c92c1..561f8c4 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteQuerySqlGenerator.cs"
+@@ -36,11 +36,37 @@ protected override Expression VisitExtension(Expression extensionExpression)
+                 GenerateJsonEach(jsonEachExpression);
+                 return extensionExpression;
+ 
++            case SqliteAggregateFunctionExpression aggregateFunctionExpression:
++                return VisitSqliteAggregateFunction(aggregateFunctionExpression);
++
+             default:
+                 return base.VisitExtension(extensionExpression);
+         }
+     }
+ 
++    /// <summary>
++    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
++    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
++    ///     any release. You should only use it directly in your code with extreme caution and knowing that
++    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
++    /// </summary>
++    protected virtual Expression VisitSqliteAggregateFunction(SqliteAggregateFunctionExpression aggregateFunctionExpression)
++    {
++        Sql.Append(aggregateFunctionExpression.Name);
++        Sql.Append("(");
++        GenerateList(aggregateFunctionExpression.Arguments, e => Visit(e));
++
++        if (aggregateFunctionExpression.Orderings.Count > 0)
++        {
++            Sql.Append(" ORDER BY ");
++            GenerateList(aggregateFunctionExpression.Orderings, e => Visit(e));
++        }
++
++        Sql.Append(")");
++
++        return aggregateFunctionExpression;
++    }
++
+     /// <summary>
+     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs"
+index 91ddd2b..ed20937 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlExpressionFactory.cs"
+@@ -153,6 +153,8 @@ public virtual RegexpExpression Regexp(SqlExpression match, SqlExpression patter
+             {
+                 GlobExpression globExpression => ApplyTypeMappingOnGlob(globExpression),
+                 RegexpExpression regexpExpression => ApplyTypeMappingOnRegexp(regexpExpression),
++                SqliteAggregateFunctionExpression aggregateFunctionExpression
++                    => aggregateFunctionExpression.ApplyTypeMapping(typeMapping),
+                 _ => base.ApplyTypeMapping(sqlExpression, typeMapping)
+             };
+ 
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs"
+index 470dd3a..6a08777 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/SqliteSqlNullabilityProcessor.cs"
+@@ -41,9 +41,72 @@ public class SqliteSqlNullabilityProcessor : SqlNullabilityProcessor
+         {
+             GlobExpression globExpression => VisitGlob(globExpression, allowOptimizedExpansion, out nullable),
+             RegexpExpression regexpExpression => VisitRegexp(regexpExpression, allowOptimizedExpansion, out nullable),
++            SqliteAggregateFunctionExpression aggregateFunctionExpression
++                => VisitSqliteAggregateFunction(aggregateFunctionExpression, allowOptimizedExpansion, out nullable),
+             _ => base.VisitCustomSqlExpression(sqlExpression, allowOptimizedExpansion, out nullable)
+         };
+ 
++    /// <summary>
++    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
++    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
++    ///     any release. You should only use it directly in your code with extreme caution and knowing that
++    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
++    /// </summary>
++    protected virtual SqlExpression VisitSqliteAggregateFunction(
++        SqliteAggregateFunctionExpression aggregateFunctionExpression,
++        bool allowOptimizedExpansion,
++        out bool nullable)
++    {
++        nullable = aggregateFunctionExpression.IsNullable;
++
++        SqlExpression[]? arguments = null;
++        for (var i = 0; i < aggregateFunctionExpression.Arguments.Count; i++)
++        {
++            var visitedArgument = Visit(aggregateFunctionExpression.Arguments[i], out _);
++            if (visitedArgument != aggregateFunctionExpression.Arguments[i] && arguments is null)
++            {
++                arguments = new SqlExpression[aggregateFunctionExpression.Arguments.Count];
++
++                for (var j = 0; j < i; j++)
++                {
++                    arguments[j] = aggregateFunctionExpression.Arguments[j];
++                }
++            }
++
++            if (arguments is not null)
++            {
++                arguments[i] = visitedArgument;
++            }
++        }
++
++        OrderingExpression[]? orderings = null;
++        for (var i = 0; i < aggregateFunctionExpression.Orderings.Count; i++)
++        {
++            var ordering = aggregateFunctionExpression.Orderings[i];
++            var visitedOrdering = ordering.Update(Visit(ordering.Expression, out _));
++            if (visitedOrdering != aggregateFunctionExpression.Orderings[i] && orderings is null)
++            {
++                orderings = new OrderingExpression[aggregateFunctionExpression.Orderings.Count];
++
++                for (var j = 0; j < i; j++)
++                {
++                    orderings[j] = aggregateFunctionExpression.Orderings[j];
++                }
++            }
++
++            if (orderings is not null)
++            {
++                orderings[i] = visitedOrdering;
++            }
++        }
++
++        return arguments is not null || orderings is not null
++            ? aggregateFunctionExpression.Update(
++                arguments ?? aggregateFunctionExpression.Arguments,
++                orderings ?? aggregateFunctionExpression.Orderings)
++            : aggregateFunctionExpression;
++    }
++
+     /// <summary>
+     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs"
+index 1f048b4..79a57a0 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/src/EFCore.Sqlite.Core/Query/Internal/Translators/SqliteStringAggregateMethodTranslator.cs"
+@@ -47,13 +47,6 @@ public class SqliteStringAggregateMethodTranslator(ISqlExpressionFactory sqlExpr
+                 return null;
+         }
+ 
+-        // SQLite does not support input ordering on aggregate methods. Since ordering matters very much for translating, if the user
+-        // specified an ordering we refuse to translate (but to error than to ignore in this case).
+-        if (source.Orderings.Count > 0)
+-        {
+-            return null;
+-        }
+-
+         sqlExpression = sqlExpressionFactory.Coalesce(
+             sqlExpression,
+             sqlExpressionFactory.Constant(string.Empty, typeof(string)));
+@@ -75,9 +68,25 @@ public class SqliteStringAggregateMethodTranslator(ISqlExpressionFactory sqlExpr
+             sqlExpression = new DistinctExpression(sqlExpression);
+         }
+ 
+-        // group_concat returns null when there are no rows (or non-null values), but string.Join returns an empty string.
+-        return sqlExpressionFactory.Coalesce(
+-            sqlExpressionFactory.Function(
++        SqlExpression groupConcatExpression;
++        if (source.Orderings.Count > 0)
++        {
++            // SQLite 3.44.0 added support for ORDER BY inside aggregate functions: group_concat(x, sep ORDER BY x)
++            groupConcatExpression = new SqliteAggregateFunctionExpression(
++                "group_concat",
++                [
++                    sqlExpression,
++                    sqlExpressionFactory.ApplyTypeMapping(separator, sqlExpression.TypeMapping)
++                ],
++                source.Orderings,
++                nullable: true,
++                argumentsPropagateNullability: Statics.FalseArrays[2],
++                typeof(string),
++                typeMapping: null);
++        }
++        else
++        {
++            groupConcatExpression = sqlExpressionFactory.Function(
+                 "group_concat",
+                 [
+                     sqlExpression,
+@@ -85,7 +94,12 @@ public class SqliteStringAggregateMethodTranslator(ISqlExpressionFactory sqlExpr
+                 ],
+                 nullable: true,
+                 argumentsPropagateNullability: Statics.FalseArrays[2],
+-                typeof(string)),
++                typeof(string));
++        }
++
++        // group_concat returns null when there are no rows (or non-null values), but string.Join returns an empty string.
++        return sqlExpressionFactory.Coalesce(
++            groupConcatExpression,
+             sqlExpressionFactory.Constant(string.Empty, typeof(string)),
+             sqlExpression.TypeMapping);
+     }
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs"
+index 9fb6281..e25257e 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38344/test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38344-control/test/EFCore.Sqlite.FunctionalTests/Query/Translations/StringTranslationsSqliteTest.cs"
+@@ -1418,19 +1418,13 @@ public override async Task Join_with_predicate()
+ 
+     public override async Task Join_with_ordering()
+     {
+-        // SQLite does not support input ordering on aggregate methods; the below does client evaluation.
+         await base.Join_with_ordering();
+ 
+         AssertSql(
+             """
+-SELECT "b1"."Int", "b0"."String", "b0"."Id"
+-FROM (
+-    SELECT "b"."Int"
+-    FROM "BasicTypesEntities" AS "b"
+-    GROUP BY "b"."Int"
+-) AS "b1"
+-LEFT JOIN "BasicTypesEntities" AS "b0" ON "b1"."Int" = "b0"."Int"
+-ORDER BY "b1"."Int", "b0"."Id" DESC
++SELECT "b"."Int" AS "Key", COALESCE(group_concat("b"."String", '|' ORDER BY "b"."Id" DESC), '') AS "Strings"
++FROM "BasicTypesEntities" AS "b"
++GROUP BY "b"."Int"
+ """);
+     }
+ 

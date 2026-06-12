@@ -1,0 +1,298 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..e378d06
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/SOLUTION.md"
+@@ -0,0 +1,96 @@
++# Solution: Manage multiple properties using the same ComplexType in IUpdateAdapter.CreateEntry
++
++## Root Cause
++
++When `IUpdateAdapter.CreateEntry` (or `IStateManager.CreateEntry`) is called with a
++`IDictionary<string, object?>` of property values, `InternalEntityEntry` populates an
++internal value-buffer by iterating `entityType.GetFlattenedProperties()` and looking up each
++property using `property.Name`.
++
++With two entity properties of the same complex type (e.g. both `TaxInfoExtended` and
++`TaxInfoExtended2` are of type `TaxInfoExtended`), `GetFlattenedProperties()` yields two
++separate property instances named `"CodeExtended"` — one for each complex-property instance.
++Both property instances have **different** internal array indexes, but both resolve to the same
++dictionary key `"CodeExtended"`.  As a result:
++
++* Both slots in the value buffer receive the same value (the one stored under the
++  unambiguous key), so the second complex-property instance silently overwrites the first.
++* When no such key exists at all (as is the case for seed data, which stores whole complex
++  objects under the complex-property name) every leaf property falls back to its sentinel
++  value and the complex type's data is silently discarded.
++
++Exactly the same ambiguity exists in `ShadowValuesFactoryFactory`, which generates runtime
++expressions that look up shadow-property values by `property.Name`.
++
++## Change Description
++
++### New helper: `PropertyBaseExtensions.GetFlattenedPropertyKey`
++Added to `src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs`.
++
++For a property directly on an entity type the key is unchanged (`property.Name`).
++For a property declared on a non-collection complex type the key is the dot-delimited chain of
++complex-property names followed by the leaf property name, e.g.:
++
++| Property | Key |
++|---|---|
++| `TaxInfo.TaxInfoId` | `"TaxInfoId"` |
++| `TaxInfo.TaxInfoExtended.CodeExtended` | `"TaxInfoExtended.CodeExtended"` |
++| `TaxInfo.TaxInfoExtended2.CodeExtended` | `"TaxInfoExtended2.CodeExtended"` |
++| `TaxInfo.TaxInfoExtended.Address.Street` | `"TaxInfoExtended.Address.Street"` |
++
++### `InternalEntityEntry` constructor
++`src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs` — replace `property.Name` with
++`property.GetFlattenedPropertyKey()` in the dictionary lookup used to populate the
++materialization value buffer.
++
++### `ShadowValuesFactoryFactory`
++`src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs` — replace `property.Name`
++with `property.GetFlattenedPropertyKey()` in the generated expression that reads shadow
++property values from the dictionary.
++
++### `EntityType.GetSeedData`
++`src/EFCore/Metadata/Internal/EntityType.cs` — the non-anonymous-type path previously stored
++whole complex objects under the complex-property name (e.g. `"TaxInfoExtended"` →
++`TaxInfoExtended instance`).  These entries were never used by `InternalEntityEntry` (it
++looked for `"CodeExtended"`, not `"TaxInfoExtended"`), meaning seed data for complex types
++was silently dropped.
++
++The method now:
++1. No longer includes `GetComplexProperties()` in `propertiesList` (so no whole-object
++   entries are produced).
++2. After processing direct scalar and navigation properties, iterates
++   `GetFlattenedComplexProperties()` and for each non-collection complex property emits one
++   entry per declared scalar property, keyed with the full path key.  For each entry, it
++   navigates the CLR object via `GetMemberInfo` to extract the actual value.
++
++### `IUpdateAdapter.CreateEntry` documentation
++`src/EFCore/Update/IUpdateAdapter.cs` — updated XML doc for the `values` parameter to explain
++the path-based key convention and why it is required for disambiguation.
++
++## Files Edited
++
++* `src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs`
++* `src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs`
++* `src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs`
++* `src/EFCore/Metadata/Internal/EntityType.cs`
++* `src/EFCore/Update/IUpdateAdapter.cs`
++
++## Precedent Usage
++
++### Query 1
++`"complex type property path disambiguation flattened properties same name"`
++
++Score 0.459 — PR #37919 (Cosmos complex property name configuration).  Not directly
++applicable; describes a different extension point.  **Ignored, not useful.**
++
++### Query 2
++`"IUpdateAdapter CreateEntry dictionary values complex type multiple properties"`
++
++Below threshold (0.406) — PR #37762 (nullable complex property `InvalidCastException`).
++This was a different bug in `ArrayPropertyValues`, not the dictionary-key lookup.
++**Ignored, not useful.**
++
++### Query 3
++`"InternalEntityEntry constructor values dictionary complex property GetComplexPropertyChain"`
++
++Below threshold (0.447) — same PR #37762 again.  **Ignored, not useful.**
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
+index 7f56a25..fc32208 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs"
+@@ -74,7 +74,7 @@ public sealed partial class InternalEntityEntry : InternalEntryBase, IUpdateEntr
+                 continue;
+             }
+ 
+-            valuesArray[index] = values.TryGetValue(property.Name, out var value)
++            valuesArray[index] = values.TryGetValue(property.GetFlattenedPropertyKey(), out var value)
+                 ? value
+                 : property.Sentinel;
+         }
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
+index 58c3387..524ee6d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs"
+@@ -99,13 +99,14 @@ protected override bool UseEntityVariable
+                     property.ClrType);
+         }
+ 
++        var propertyKey = property.GetFlattenedPropertyKey();
+         return Expression.Condition(
+-            Expression.Call(parameter, PropertyAccessorsFactory.ContainsKeyMethod, Expression.Constant(property.Name)),
++            Expression.Call(parameter, PropertyAccessorsFactory.ContainsKeyMethod, Expression.Constant(propertyKey)),
+             Expression.Convert(
+                 Expression.MakeIndex(
+                     parameter,
+                     DictionaryIndexer,
+-                    [Expression.Constant(property.Name)]),
++                    [Expression.Constant(propertyKey)]),
+                 property.ClrType),
+             Expression.Constant(property.Sentinel, property.ClrType));
+     }
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Metadata/Internal/EntityType.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Metadata/Internal/EntityType.cs"
+index 1ea4ee3..d80e289 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Metadata/Internal/EntityType.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Metadata/Internal/EntityType.cs"
+@@ -2703,7 +2703,6 @@ public virtual IEnumerable<Trigger> GetDeclaredTriggers()
+             propertiesList ??= GetProperties()
+                 .Concat<IPropertyBase>(GetNavigations())
+                 .Concat(GetSkipNavigations())
+-                .Concat(GetComplexProperties())
+                 .ToList();
+             if (ClrType.IsAssignableFrom(type))
+             {
+@@ -2758,6 +2757,83 @@ public virtual IEnumerable<Trigger> GetDeclaredTriggers()
+                         ? value
+                         : valueConverter.ConvertToProvider(value);
+                 }
++
++                // Flatten non-collection complex properties into path-keyed scalar entries so that
++                // InternalEntityEntry can look them up unambiguously even when multiple complex
++                // properties of the same CLR type share identically-named sub-properties.
++                foreach (var complexProperty in GetFlattenedComplexProperties())
++                {
++                    if (complexProperty.IsCollection || complexProperty.IsShadowProperty())
++                    {
++                        continue;
++                    }
++
++                    foreach (var flatProperty in complexProperty.ComplexType.GetDeclaredProperties())
++                    {
++                        if (flatProperty.IsShadowProperty())
++                        {
++                            continue;
++                        }
++
++                        var key = flatProperty.GetFlattenedPropertyKey();
++                        if (seed.ContainsKey(key))
++                        {
++                            continue;
++                        }
++
++                        ValueConverter? valueConverter = null;
++                        if (providerValues
++                            && !valueConverters.TryGetValue(key, out valueConverter))
++                        {
++                            valueConverter = flatProperty.GetTypeMapping().Converter;
++                            valueConverters[key] = valueConverter;
++                        }
++
++                        // Navigate to the complex object that owns this property.
++                        // Walk up the complex property chain to find the containing object.
++                        var chain = new List<IComplexProperty>();
++                        var declaringType = (IReadOnlyTypeBase)flatProperty.DeclaringType;
++                        while (declaringType is IReadOnlyComplexType ct)
++                        {
++                            chain.Insert(0, ct.ComplexProperty);
++                            declaringType = ct.ComplexProperty.DeclaringType;
++                        }
++
++                        object? complexObj = rawSeed;
++                        foreach (var cp in chain)
++                        {
++                            if (complexObj == null)
++                            {
++                                break;
++                            }
++
++                            var cpMemberInfo = cp.GetMemberInfo(forMaterialization: false, forSet: false);
++                            complexObj = cpMemberInfo switch
++                            {
++                                PropertyInfo pi => pi.GetValue(complexObj),
++                                FieldInfo fi => fi.GetValue(complexObj),
++                                _ => null
++                            };
++                        }
++
++                        if (complexObj == null)
++                        {
++                            continue;
++                        }
++
++                        var leafMemberInfo = flatProperty.GetMemberInfo(forMaterialization: false, forSet: false);
++                        var value = leafMemberInfo switch
++                        {
++                            PropertyInfo pi => pi.GetValue(complexObj),
++                            FieldInfo fi => fi.GetValue(complexObj),
++                            _ => null
++                        };
++
++                        seed[key] = valueConverter == null
++                            ? value
++                            : valueConverter.ConvertToProvider(value);
++                    }
++                }
+             }
+             else
+             {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs"
+index 0588611..3e0ebba 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Metadata/Internal/PropertyBaseExtensions.cs"
+@@ -20,6 +20,41 @@ public static class PropertyBaseExtensions
+     public static int GetShadowIndex(this IPropertyBase propertyBase)
+         => ((IRuntimePropertyBase)propertyBase).GetShadowIndex();
+ 
++    /// <summary>
++    ///     Gets the key used when looking up this property in an <see cref="IDictionary{TKey, TValue}" /> of property values
++    ///     (e.g. as passed to <see cref="IUpdateEntry.CreateEntry" />). For properties directly on an entity type this is
++    ///     the property <see cref="IReadOnlyPropertyBase.Name" />. For properties declared on a complex type this is the
++    ///     dot-delimited path of complex property names followed by the property name, e.g.
++    ///     <c>TaxInfoExtended.CodeExtended</c> or <c>TaxInfoExtended2.CodeExtended</c>. This allows callers to
++    ///     distinguish between properties with the same name belonging to different complex-property instances of the
++    ///     same complex type.
++    /// </summary>
++    /// <remarks>
++    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
++    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
++    ///     any release. You should only use it directly in your code with extreme caution and knowing that
++    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
++    /// </remarks>
++    public static string GetFlattenedPropertyKey(this IReadOnlyPropertyBase propertyBase)
++    {
++        if (propertyBase.DeclaringType is not IReadOnlyComplexType)
++        {
++            return propertyBase.Name;
++        }
++
++        // Walk up the chain of complex property declarations to build the path.
++        var segments = new Stack<string>();
++        segments.Push(propertyBase.Name);
++        var declaringType = propertyBase.DeclaringType;
++        while (declaringType is IReadOnlyComplexType complexType)
++        {
++            segments.Push(complexType.ComplexProperty.Name);
++            declaringType = complexType.ComplexProperty.DeclaringType;
++        }
++
++        return string.Join(".", segments);
++    }
++
+     /// <summary>
+     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Update/IUpdateAdapter.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Update/IUpdateAdapter.cs"
+index 514dd3b..11b2486 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38367/src/EFCore/Update/IUpdateAdapter.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38367-treatment/src/EFCore/Update/IUpdateAdapter.cs"
+@@ -114,7 +114,14 @@ public interface IUpdateAdapter
+     /// <summary>
+     ///     Creates a new entry with the given property values for the given entity type.
+     /// </summary>
+-    /// <param name="values">A dictionary of property names to values.</param>
++    /// <param name="values">
++    ///     A dictionary of property keys to values. For scalar properties directly on the entity type the key is the
++    ///     property name (e.g. <c>"Id"</c>). For scalar properties declared on a non-collection complex type the key
++    ///     is the dot-delimited path of complex property names followed by the property name (e.g.
++    ///     <c>"TaxInfoExtended.CodeExtended"</c>). This path-based key is required to distinguish between properties
++    ///     with the same name that belong to different complex-property instances of the same complex type (e.g.
++    ///     <c>"TaxInfoExtended.CodeExtended"</c> vs <c>"TaxInfoExtended2.CodeExtended"</c>).
++    /// </param>
+     /// <param name="entityType">The entity type.</param>
+     /// <returns>The created entry.</returns>
+     IUpdateEntry CreateEntry(IDictionary<string, object?> values, IEntityType entityType);

@@ -1,0 +1,22 @@
+{
+  "pr": 38140,
+  "arm": "treatment",
+  "file_recall": 0.5,
+  "symbol_recall": 0.333,
+  "real_files": [
+    "src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs",
+    "test/EFCore.InMemory.FunctionalTests/Query/NorthwindGroupByQueryInMemoryTest.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/NorthwindGroupByQuerySqlServerTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs"
+  ],
+  "real_symbols": 27,
+  "symbols_hit": 9
+}

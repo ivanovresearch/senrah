@@ -1,0 +1,72 @@
+ISSUE TITLE: ToQueryString with Table Valued Parameter is missing the type name
+
+ISSUE BODY:
+When using Table Valued Parameters in SQL Server, an attempt to use `.ToQueryString()` generates the following rather strange and invalid line for the parameter.
+```sql
+DECLARE @p1 structured = ;
+```
+____
+### Use case
+
+Using TVPs is a common usage to be able to pass in large amounts of data into SQL Server efficiently. A common way of doing this would be to create a raw SQL query, and looks something like the following:
+```cs
+var table = new DataTable { Columns = {
+    { "Value", typeof(int) },
+} };
+foreach (var someObject in someList)
+    table.Add(someObject.Id);
+
+var tvp = Db.Database.FromSqlQuery<int>($"SELECT * FROM {new SqlParameter("@data", table) { TypeName = "dbo.IntList" }}");
+```
+You can then compose over that in the normal way:
+```cs
+var query = (
+    from e in Db.Employee
+    where tvp.Contains(e.Id)
+);
+```
+### The bug
+
+But if you try to use `.ToQueryString` on those expressions, you get incorrect, non-compilable SQL.
+```sql
+DECLARE @p1 structured = ;
+```
+I understand the docs say
+ > This string may not be suitable for direct execution and is intended only for use in debugging.
+
+But in this case it's not difficult to fix.
+
+
+### The fix
+
+It seems difficult, inefficient (and probably counter-productive in the case of `IEnumerable<SqlDataRecord>` parameter values) to actually generate `INSERT` rows for the data, so we shouldn't worry about that. It's enough to just generate the type name correctly, without the spurious `=`. This would still allow the code to be pasted straight into apps such as SSMS to generate query plans etc.
+
+In `SqlServerQueryStringFactory.cs`, we need to change the code at:
+https://github.com/dotnet/efcore/blob/94256358a5f2ac1a589c3fbc11915e033669c654/src/EFCore.SqlServer/Query/Internal/SqlServerQueryStringFactory.cs#L52-L59
+To
+```cs
+            builder
+                .Append("DECLARE ")
+                .Append(parameter.ParameterName)
+                .Append(' ')
+                .Append(typeName);
+
+            if (parameter.SqlDbType != SqlDbType.Structured)
+            {
+                builder.Append(" = ");
+                if (parameter.Value == DBNull.Value || parameter.Value is null)
+```
+And the code at:
+https://github.com/dotnet/efcore/blob/94256358a5f2ac1a589c3fbc11915e033669c654/src/EFCore.SqlServer/Query/Internal/SqlServerQueryStringFactory.cs#L182
+To:
+```cs
+                SqlDbType.Structured => builder.Append(sqlParameter.TypeName),
+```
+
+
+
+EF Core version: 7.0.14
+Database provider: Microsoft.EntityFrameworkCore.SqlServer
+Target framework: .NET 7.0
+Operating system: Windows 11
+IDE: LinqPad

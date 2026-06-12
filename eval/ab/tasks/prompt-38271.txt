@@ -1,0 +1,8 @@
+ISSUE TITLE: SQL Server: instead of dropping/creating indexes, use CREATE INDEX with DROP EXISTING=ON
+
+ISSUE BODY:
+When an index facet is changed (e.g. the fill factor), EF currently generates a migration that drops and then recreates the index.
+
+First, we should add support for ALTER INDEX, which would be the proper and efficient way to apply index changes;  already tracks this.
+
+However, there apparently are cases where you can't alter the existing index, but need to recreate it. For those cases, CREATE INDEX with DROP EXISTING=ON would be better perf-wise than drop/create, e.g. since it allows queries to continue using the old index as the new one is still being created (this could take a long time on big tables).

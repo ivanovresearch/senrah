@@ -1,0 +1,71 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38286-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/SOLUTION.md"
+new file mode 100644
+index 0000000..68488a5
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/SOLUTION.md"
+@@ -0,0 +1,22 @@
++# Solution for Issue #38286
++
++## Root Cause
++
++When a LINQ query uses `SelectMany` with an inline array where the array's values are **not** projected or compared against any typed column — e.g. `entities.SelectMany(e => new[] { "a", "b" }.Select(k => e))` — the query compiler creates a `ValuesExpression` whose row values carry `null` `TypeMapping`. This happens because:
++
++1. In `RelationalQueryableMethodTranslatingExpressionVisitor`, inline array elements are translated with `applyDefaultTypeMapping: false` so their type mapping can be inferred later from usage context.
++2. The `ColumnTypeMappingScanner` infers type mappings by finding typed references to the `ValuesExpression` column (e.g. comparison with a mapped column). When the array values are never used or compared, no inference is recorded.
++3. In `RelationalTypeMappingPostprocessor.ApplyTypeMappingsOnValuesExpression`, the inferred type mapping for the value column (`inferredTypeMappings[j]`) is `null`, so the constants keep their `null` `TypeMapping`.
++4. A `SqlUnaryExpression(Convert, value, value.Type, value.TypeMapping)` is then created with `null` `TypeMapping` for the first row.
++5. The SQL generator calls `sqlConstantExpression.TypeMapping!.GenerateSqlLiteral(...)` on the operand of that `Convert`, dereferencing a null mapping and throwing `NullReferenceException`.
++
++## Change
++
++**File:** `src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs`
++
++In `ApplyTypeMappingsOnValuesExpression`, the inner loop that applies type mappings to `ValuesExpression` row values was extended: when no type mapping was inferred for a non-`_ord` value column (column index `j > 0`) and the value still has a null `TypeMapping`, fall back to `ISqlExpressionFactory.ApplyDefaultTypeMapping` — which looks up the default type mapping for the value's CLR type from the type mapping source. This ensures every constant in every row gets a concrete type mapping before the SQL generator visits it.
++
++## Files Edited
++
++- `src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs`
++- `test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs` — added `Inline_collection_SelectMany_where_values_are_not_projected` regression test
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38286/src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs"
+index c99d57e..af1e02f 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38286/src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs"
+@@ -151,10 +151,19 @@ protected virtual ValuesExpression ApplyTypeMappingsOnValuesExpression(ValuesExp
+                     {
+                         var value = rowValue.Values[j];
+ 
+-                        if (value.TypeMapping is null
+-                            && inferredTypeMappings[j] is { } inferredTypeMapping)
++                        if (value.TypeMapping is null)
+                         {
+-                            value = _sqlExpressionFactory.ApplyTypeMapping(value, inferredTypeMapping);
++                            if (inferredTypeMappings[j] is { } inferredTypeMapping)
++                            {
++                                value = _sqlExpressionFactory.ApplyTypeMapping(value, inferredTypeMapping);
++                            }
++                            else if (j > 0)
++                            {
++                                // No type mapping was inferred for this column (e.g. the inline collection values are never projected or
++                                // compared against a typed column). Fall back to the default type mapping for the CLR type so that the SQL
++                                // generator can render the constant without crashing with a NullReferenceException.
++                                value = _sqlExpressionFactory.ApplyDefaultTypeMapping(value)!;
++                            }
+                         }
+ 
+                         // We currently add explicit conversions on the first row (but not to the _ord column), to ensure that the inferred
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38286/test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs"
+index 6b8a4dd..e0a0aae 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38286/test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38286-control/test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs"
+@@ -1349,6 +1349,11 @@ public virtual Task Column_collection_SelectMany_with_Select_to_anonymous_type()
+         => AssertQuery(ss
+             => ss.Set<PrimitiveCollectionsEntity>().SelectMany(c => c.Ints.Select(i => new { Original = i, Incremented = i + 1 })));
+ 
++    [ConditionalFact] // #38286
++    public virtual Task Inline_collection_SelectMany_where_values_are_not_projected()
++        => AssertQuery(ss
++            => ss.Set<PrimitiveCollectionsEntity>().SelectMany(e => new[] { "a", "b" }.Select(k => e)));
++
+     [ConditionalFact]
+     public virtual Task Column_collection_projection_from_top_level()
+         => AssertQuery(

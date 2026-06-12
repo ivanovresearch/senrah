@@ -1,0 +1,61 @@
+ISSUE TITLE: Migration tries to alter column type of computed column if CLR type changes.
+
+ISSUE BODY:
+I encountered an issue where adding a Migration after changing the CLR type of a property mapped to a Computed Column in SQL Server results in the Migration trying to `ALTER COLUMN` on that column which doesn't work.
+
+Example, start with the following class and `DbContext`:
+
+```
+public class ComputedDbContext : DbContext
+{
+    public DbSet<FileData> Files { get; set; }
+
+    public ComputedDbContext(DbContextOptions<ComputedDbContext> options) : base(options) { }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<FileData>(entity =>
+        {
+            entity.Property(e => e.FileSize)
+                .HasComputedColumnSql("DATALENGTH([FileContents])");
+        });
+    }
+}
+
+public class FileData
+{
+    public int FileDataId { get; set; }
+    public byte[] FileContents { get; set; } = Array.Empty<byte>();
+    public int FileSize { get; set; }
+}
+```
+
+Then add an initial migration:
+`Add-Migration Initial`
+
+This creates the table with computed column:
+```
+CREATE TABLE [Files] (
+    [FileDataId] int NOT NULL IDENTITY,
+    [FileContents] varbinary(max) NOT NULL,
+    [FileSize] AS DATALENGTH([FileContents]),
+    CONSTRAINT [PK_Files] PRIMARY KEY ([FileDataId])
+);
+GO
+```
+
+Later, realize a problem because `DATALENGTH` returns `BIGINT` so the type of `FileSize` in the class needs to be changed:
+`public long FileSize { get; set; }`
+
+Add another migration:
+`Add-Migration DataTypeChange`
+
+This generates:
+`ALTER TABLE [Files] ALTER COLUMN [FileSize] bigint NOT NULL;`
+
+Which fails when updating the database with:
+> Cannot alter column 'FileSize' because it is 'COMPUTED'.
+
+This requires removing the `AlterColumn` call from the migration after creating it in order for future migrations to run successfully. I don't believe properties with `.HasComputedColumnSql()` configured should be picked up by migrations when their CLR type changes since the database column has no type itself in this case.

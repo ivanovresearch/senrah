@@ -1,0 +1,12 @@
+{
+  "pr": 38367,
+  "issue": 37846,
+  "issue_title": "Manage multiple properties using the same ComplexType in IUpdateAdapter.CreateEntry",
+  "issue_body": "Developing a provider for EF Core there is point obscure.\nStarting from this simple model:\n```c#\n    [Table(\"TaxInfo\", Schema = \"ComplexTest\")]\n    public class TaxInfo\n    {\n        public int TaxInfoId { get; set; }\n        public char Code { get; set; }\n        public decimal Percentage { get; set; }\n        [Required]\n        public TaxInfoExtended TaxInfoExtended { get; set; }\n        [Required]\n        public TaxInfoExtended TaxInfoExtended2 { get; set; }\n        public int ExtraValue { get; set; } \n    }\n\n    [ComplexType]\n    public class TaxInfoExtended\n    {\n        public int CodeExtended { get; set; }\n        public decimal PercentageExtended { get; set; }\n    }\n```\ncurrently the data are saved to manage this kind of condition, however the focus of the issue is related on how the complex type can be made available back.\nThe code is using the following API:\nhttps://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/Update/Internal/UpdateAdapter.cs#L150-L153\nwhich accept in input a `IDictionary<string, object?>` then the content is passed to the StateManager and used:\n\nhttps://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/ChangeTracking/Internal/StateManager.cs#L275-L282\n\nThe `InternalEntityEntry` try to get the properties from the dictionary using the Name property of the flattened list:\nhttps://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs#L69-L85\n\nhowever, from our test, the flattened list contains all properties, but the `Name` property of the `IProperty` does not distinguish between the same property of multiple ComplexType. In the above example how is it possible to fill in the dictionary to distinguish between `CodeExtended` of `TaxInfoExtended` and `TaxInfoExtended2`?\nOr, despite from the usage of flattened list of properties in `InternalEntityEntry`, the dictionary shall be filled in only with the Entity properties and the complex one shall be set using the `UpdateEntry` class?",
+  "issue_state": "closed",
+  "merge_commit": "16bde3332df34787b0e158394f4ee7238b9e636a",
+  "parents": [
+    "3451cde71a4eafbc45e562e63b500d939967cfc8"
+  ],
+  "pr_title": "Add IUpdateAdapter.CreateEntry overload that works with non-collection complex properties"
+}

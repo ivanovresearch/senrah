@@ -1,0 +1,23 @@
+{
+  "pr": 38297,
+  "arm": "control",
+  "file_recall": 1.0,
+  "symbol_recall": 0.861,
+  "real_files": [
+    "src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
+  ],
+  "real_symbols": 36,
+  "symbols_hit": 31
+}

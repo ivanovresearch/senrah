@@ -1,0 +1,38 @@
+ISSUE TITLE: Manage multiple properties using the same ComplexType in IUpdateAdapter.CreateEntry
+
+ISSUE BODY:
+Developing a provider for EF Core there is point obscure.
+Starting from this simple model:
+```c#
+    [Table("TaxInfo", Schema = "ComplexTest")]
+    public class TaxInfo
+    {
+        public int TaxInfoId { get; set; }
+        public char Code { get; set; }
+        public decimal Percentage { get; set; }
+        [Required]
+        public TaxInfoExtended TaxInfoExtended { get; set; }
+        [Required]
+        public TaxInfoExtended TaxInfoExtended2 { get; set; }
+        public int ExtraValue { get; set; } 
+    }
+
+    [ComplexType]
+    public class TaxInfoExtended
+    {
+        public int CodeExtended { get; set; }
+        public decimal PercentageExtended { get; set; }
+    }
+```
+currently the data are saved to manage this kind of condition, however the focus of the issue is related on how the complex type can be made available back.
+The code is using the following API:
+https://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/Update/Internal/UpdateAdapter.cs#L150-L153
+which accept in input a `IDictionary<string, object?>` then the content is passed to the StateManager and used:
+
+https://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/ChangeTracking/Internal/StateManager.cs#L275-L282
+
+The `InternalEntityEntry` try to get the properties from the dictionary using the Name property of the flattened list:
+https://github.com/dotnet/efcore/blob/262817573eb9ed9e11777870487ad1bc60a72156/src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs#L69-L85
+
+however, from our test, the flattened list contains all properties, but the `Name` property of the `IProperty` does not distinguish between the same property of multiple ComplexType. In the above example how is it possible to fill in the dictionary to distinguish between `CodeExtended` of `TaxInfoExtended` and `TaxInfoExtended2`?
+Or, despite from the usage of flattened list of properties in `InternalEntityEntry`, the dictionary shall be filled in only with the Entity properties and the complex one shall be set using the `UpdateEntry` class?

@@ -1,0 +1,26 @@
+{
+  "pr": 38286,
+  "arm": "treatment",
+  "file_recall": 0.125,
+  "symbol_recall": 0.545,
+  "real_files": [
+    "src/EFCore.Relational/Query/QuerySqlGenerator.cs",
+    "src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/PrimitiveCollectionsQueryCosmosTest.cs",
+    "test/EFCore.Specification.Tests/Query/PrimitiveCollectionsQueryTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/PrimitiveCollectionsQueryOldSqlServerTest.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/PrimitiveCollectionsQuerySqlServerJsonTypeTest.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/PrimitiveCollectionsQuerySqlServerTest.cs",
+    "test/EFCore.Sqlite.FunctionalTests/Query/PrimitiveCollectionsQuerySqliteTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs",
+    "test/EFCore.Relational.Specification.Tests/Query/AdHocMiscellaneousQueryRelationalTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/AdHocMiscellaneousQuerySqlServerTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.Relational/Query/RelationalTypeMappingPostprocessor.cs"
+  ],
+  "real_symbols": 22,
+  "symbols_hit": 12
+}

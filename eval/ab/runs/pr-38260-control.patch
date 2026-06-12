@@ -1,0 +1,156 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38260-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/SOLUTION.md"
+new file mode 100644
+index 0000000..f682eb2
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/SOLUTION.md"
+@@ -0,0 +1,25 @@
++# Solution: SIGN function returns argument type but EF expects int
++
++## Root Cause
++
++T-SQL's `SIGN` function returns the **same data type as its argument** (per MSDN docs). When the argument is a `decimal`, `double`, or `float` column, `SIGN` returns a value of that same type. However, `Math.Sign(decimal/double/float)` in C# always returns `int`. EF Core's materializer generates a `GetInt32` call (matching the C# return type), which throws `InvalidCastException` because the SQL Server data reader yields a `decimal`/`float`/`double`.
++
++The previous code used `TranslateFunction("SIGN", arg, nullTypeMapping: true)`, which correctly set the CLR return type to `int` but left the SQL-level type mapping as the argument's type — causing the type mismatch at read time.
++
++## Change Description
++
++Replaced the generic `TranslateFunction("SIGN", ...)` call with a dedicated `TranslateSign` local function in `SqlServerMathTranslator`. The new function:
++
++1. Emits a `SIGN(arg)` SQL function expression that uses the argument's type mapping (preserving the input type at the SQL level — correct behavior).
++2. For any argument type that is **not** already `int` (i.e., `decimal`, `double`, `float`, `long`, `sbyte`, `short`), wraps the result in a `CAST(... AS int)` via `sqlExpressionFactory.Convert`. This ensures the SQL Server data reader returns the value as an `int`, matching EF's materializer expectation from `Math.Sign`'s `int` return type.
++3. For `int` arguments, no cast is needed (SQL Server's `SIGN(int)` already returns `int`).
++
++This produces SQL such as `CAST(SIGN([col]) AS int)` for non-integer argument types, eliminating the `InvalidCastException`.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs` — core fix: new `TranslateSign` local function wraps non-int SIGN results in CAST.
++- `test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs` — added `Sign_decimal` base test using `Math.Sign(b.Decimal)`.
++- `test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs` — updated SQL assertions for `Sign` and `Sign_float` to reflect new `CAST(SIGN(...) AS int)` output; added `Sign_decimal` override with expected SQL.
++- `test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs` — added `Sign_decimal` override that expects translation failure (SQLite does not support decimal Sign).
++- `test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs` — added `Sign_decimal` override with expected Cosmos SQL (Cosmos SIGN supports decimal natively and no cast is needed there).
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
+index 06f9e9b..ed44699 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
+@@ -93,7 +93,7 @@ public class SqlServerMathTranslator(ISqlExpressionFactory sqlExpressionFactory)
+             nameof(Math.Sign) when arguments is [var arg]
+                 && (arg.Type == typeof(decimal) || arg.Type == typeof(double) || arg.Type == typeof(float)
+                     || arg.Type == typeof(int) || arg.Type == typeof(long) || arg.Type == typeof(sbyte) || arg.Type == typeof(short))
+-                => TranslateFunction("SIGN", arg, nullTypeMapping: true),
++                => TranslateSign(arg),
+             nameof(double.DegreesToRadians) when arguments is [var arg]
+                 && (arg.Type == typeof(double) || arg.Type == typeof(float))
+                 => TranslateFunction("RADIANS", arg),
+@@ -127,6 +127,25 @@ SqlExpression TranslateFunction(string sqlFunctionName, SqlExpression arg, bool
+                 nullTypeMapping ? null : typeMapping);
+         }
+ 
++        SqlExpression TranslateSign(SqlExpression arg)
++        {
++            var typeMapping = ExpressionExtensions.InferTypeMapping(arg);
++            var signExpr = sqlExpressionFactory.Function(
++                "SIGN",
++                [sqlExpressionFactory.ApplyTypeMapping(arg, typeMapping)],
++                nullable: true,
++                argumentsPropagateNullability: Statics.TrueArrays[1],
++                arg.Type,
++                typeMapping);
++
++            // T-SQL SIGN returns the same data type as its argument, but Math.Sign always returns int.
++            // For non-integer argument types we must cast the result to int so the materializer reads
++            // the correct type from the data reader.
++            return arg.Type == typeof(int)
++                ? (SqlExpression)sqlExpressionFactory.ApplyTypeMapping(signExpr, typeMapping)
++                : sqlExpressionFactory.Convert(signExpr, typeof(int));
++        }
++
+         SqlExpression TranslateBinaryFunction(string sqlFunctionName, SqlExpression arg1, SqlExpression arg2)
+         {
+             var typeMapping = ExpressionExtensions.InferTypeMapping(arg1, arg2);
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs"
+index f658386..7cde16f 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Cosmos.FunctionalTests/Query/Translations/MathTranslationsCosmosTest.cs"
+@@ -459,6 +459,18 @@ public override async Task Sign_float()
+ """);
+     }
+ 
++    public override async Task Sign_decimal()
++    {
++        await base.Sign_decimal();
++
++        AssertSql(
++            """
++SELECT VALUE c
++FROM root c
++WHERE (SIGN(c["Decimal"]) > 0)
++""");
++    }
++
+     public override async Task Max()
+     {
+         // Cosmos client evaluation. Issue #17246.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
+index f6b9e99..3f6b99c 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
+@@ -193,6 +193,10 @@ public virtual Task Sign()
+     public virtual Task Sign_float()
+         => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => MathF.Sign(b.Float) > 0));
+ 
++    [ConditionalFact]
++    public virtual Task Sign_decimal()
++        => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => Math.Sign(b.Decimal) > 0));
++
+     [ConditionalFact]
+     public virtual Task Max()
+         => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => Math.Max(b.Int, b.Short - 3) == b.Int));
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
+index 3a848d3..04d4ac6 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
+@@ -461,7 +461,7 @@ public override async Task Sign()
+             """
+ SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
+ FROM [BasicTypesEntities] AS [b]
+-WHERE SIGN([b].[Double]) > 0
++WHERE CAST(SIGN([b].[Double]) AS int) > 0
+ """);
+     }
+ 
+@@ -473,7 +473,19 @@ public override async Task Sign_float()
+             """
+ SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
+ FROM [BasicTypesEntities] AS [b]
+-WHERE SIGN([b].[Float]) > 0
++WHERE CAST(SIGN([b].[Float]) AS int) > 0
++""");
++    }
++
++    public override async Task Sign_decimal()
++    {
++        await base.Sign_decimal();
++
++        AssertSql(
++            """
++SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
++FROM [BasicTypesEntities] AS [b]
++WHERE CAST(SIGN([b].[Decimal]) AS int) > 0
+ """);
+     }
+ 
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
+index 1c96938..b4633da 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-control/test/EFCore.Sqlite.FunctionalTests/Query/Translations/MathTranslationsSqliteTest.cs"
+@@ -431,6 +431,9 @@ public override async Task Sign_float()
+ """);
+     }
+ 
++    public override Task Sign_decimal()
++        => AssertTranslationFailed(() => base.Sign_decimal()); // SQLite decimal support
++
+     public override async Task Max()
+     {
+         await base.Max();

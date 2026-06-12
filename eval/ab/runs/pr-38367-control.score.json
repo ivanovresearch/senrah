@@ -1,0 +1,31 @@
+{
+  "pr": 38367,
+  "arm": "control",
+  "file_recall": 0.182,
+  "symbol_recall": 0.24,
+  "real_files": [
+    "src/EFCore.Cosmos/Storage/Internal/CosmosDatabaseCreator.cs",
+    "src/EFCore.InMemory/Storage/Internal/InMemoryStore.cs",
+    "src/EFCore/ChangeTracking/Internal/IStateManager.cs",
+    "src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs",
+    "src/EFCore/ChangeTracking/Internal/StateManager.cs",
+    "src/EFCore/EFCore.baseline.json",
+    "src/EFCore/Update/IUpdateAdapter.cs",
+    "src/EFCore/Update/Internal/UpdateAdapter.cs",
+    "test/EFCore.Tests/ChangeTracking/Internal/InternalEntityEntryTestBase.cs",
+    "test/EFCore.Tests/ChangeTracking/Internal/StateManagerTest.cs",
+    "test/EFCore.Tests/TestUtilities/FakeStateManager.cs"
+  ],
+  "touched_files": [
+    "src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs",
+    "src/EFCore/ChangeTracking/Internal/ShadowValuesFactoryFactory.cs",
+    "src/EFCore/Update/IUpdateAdapter.cs",
+    "test/EFCore.Tests/ChangeTracking/Internal/InternalComplexEntryTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore/ChangeTracking/Internal/InternalEntityEntry.cs",
+    "src/EFCore/Update/IUpdateAdapter.cs"
+  ],
+  "real_symbols": 50,
+  "symbols_hit": 12
+}

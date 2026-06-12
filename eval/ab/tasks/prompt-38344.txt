@@ -1,0 +1,4 @@
+ISSUE TITLE: Support ORDER BY in SQLite aggregate functions
+
+ISSUE BODY:
+SQLite 3.44.0 is out with support for ORDER BY for aggregate functions ([release notes](https://sqlite.org/releaselog/3_44_0.html)); we should add support for that in query processing.

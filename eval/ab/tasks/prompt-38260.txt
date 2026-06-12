@@ -1,0 +1,73 @@
+ISSUE TITLE: SQL Server: Math.Sign(decimal) throws InvalidCastException - SIGN returns decimal, expected Int32
+
+ISSUE BODY:
+### Bug description
+
+`Math.Sign(decimal)` in a SQL Server query throws `InvalidCastException` at materialization time. The translator emits a bare `SIGN(<col>)`, but per the [T-SQL `SIGN` documentation](https://learn.microsoft.com/sql/t-sql/functions/sign-transact-sql) `SIGN` returns the same data type as its input. For a `decimal` column it returns `decimal`, not `int`. EF Core's materializer reads the column with `SqlDataReader.GetInt32` (matching the C# return type of `Math.Sign(decimal)`, which is `int`), and that throws.
+
+### Your code
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+
+using var db = new ReproContext();
+db.Database.EnsureDeleted();
+db.Database.EnsureCreated();
+
+db.Samples.Add(new Sample { Value = 1m });
+db.SaveChanges();
+
+_ = db.Samples.Select(s => Math.Sign(s.Value)).ToList();
+
+class Sample
+{
+    public int Id { get; set; }
+    public decimal Value { get; set; }
+}
+
+class ReproContext : DbContext
+{
+    public DbSet<Sample> Samples => Set<Sample>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder options)
+        => options.UseSqlServer(@"Server=(localdb)\mssqllocaldb;Database=EfCore10SignRepro");
+}
+```
+
+### Stack traces
+
+```text
+System.InvalidCastException: Unable to cast object of type 'System.Decimal' to type 'System.Int32'.
+   at Microsoft.Data.SqlClient.SqlBuffer.get_Int32()
+   at Microsoft.Data.SqlClient.SqlDataReader.GetInt32(Int32 i)
+   at lambda_method...(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+   at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.Enumerator.MoveNext()
+   at System.Collections.Generic.List`1..ctor(IEnumerable`1 collection)
+   at System.Linq.Enumerable.ToList[TSource](IEnumerable`1 source)
+```
+
+### Verbose output
+
+```text
+
+```
+
+### EF Core version
+
+10.0.7
+
+### Database provider
+
+Microsoft.EntityFrameworkCore.SqlServer
+
+### Target framework
+
+.NET 10
+
+### Operating system
+
+Linux
+
+### IDE
+
+None

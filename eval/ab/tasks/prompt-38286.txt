@@ -1,0 +1,64 @@
+ISSUE TITLE: SelectMany with inline array values crashes SQL generator with NullReferenceException
+
+ISSUE BODY:
+## Description
+
+Using `SelectMany` with an inline array crashes the SQL generator with a `NullReferenceException`. The query compiler produces expression nodes with null `TypeMapping` inside `ValuesExpression` row values, which the SQL generator doesn't handle.
+
+Originally reported at https://github.com/npgsql/efcore.pg/issues/3835 against the PostgreSQL provider, but reproduces identically with SQL Server.
+
+## Reproduction
+
+```csharp
+using System;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+await using var context = new TestContext();
+_ = context.Entities.SelectMany(e => new[] { "a", "b" }.Select(k => e)).ToList();
+
+public class TestContext : DbContext
+{
+    public DbSet<TestEntity> Entities => Set<TestEntity>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        => optionsBuilder
+            .UseSqlServer(Environment.GetEnvironmentVariable("Test__SqlServer__DefaultConnection"))
+            .LogTo(Console.WriteLine, LogLevel.Information)
+            .EnableSensitiveDataLogging();
+}
+
+public record TestEntity(int Id = 0);
+```
+
+## Exception
+
+```
+System.NullReferenceException: Object reference not set to an instance of an object.
+   at Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator.VisitSqlConstant(SqlConstantExpression sqlConstantExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitSqlConstant(SqlConstantExpression sqlConstantExpression)
+   at Microsoft.EntityFrameworkCore.Query.SqlExpressionVisitor.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator.VisitSqlUnary(SqlUnaryExpression sqlUnaryExpression)
+   at Microsoft.EntityFrameworkCore.Query.SqlExpressionVisitor.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator.VisitRowValue(RowValueExpression rowValueExpression)
+   at Microsoft.EntityFrameworkCore.Query.SqlExpressionVisitor.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.GenerateValues(ValuesExpression valuesExpression)
+   at Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator.VisitValues(ValuesExpression valuesExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitValues(ValuesExpression valuesExpression)
+   at Microsoft.EntityFrameworkCore.Query.SqlExpressionVisitor.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal.SqlServerQuerySqlGenerator.VisitExtension(Expression extensionExpression)
+   at Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator.VisitCrossApply(CrossApplyExpression crossApplyExpression)
+   ...
+```
+
+## Provider and version information
+
+EF Core version: 10.0.4 (also reproduces on 9.0.6)
+Database provider: Microsoft.EntityFrameworkCore.SqlServer (also reproduces with Npgsql.EntityFrameworkCore.PostgreSQL)
+Target framework: net10.0
+Operating system: Windows
+IDE: N/A (console app)

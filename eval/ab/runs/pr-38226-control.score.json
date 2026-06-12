@@ -1,0 +1,24 @@
+{
+  "pr": 38226,
+  "arm": "control",
+  "file_recall": 0.75,
+  "symbol_recall": 0.565,
+  "real_files": [
+    "src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs",
+    "test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore/Query/Internal/QueryableMethodNormalizingExpressionVisitor.cs",
+    "test/EFCore.Specification.Tests/Query/NorthwindMiscellaneousQueryTestBase.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Query/NorthwindMiscellaneousQuerySqlServerTest.cs"
+  ],
+  "real_symbols": 23,
+  "symbols_hit": 13
+}

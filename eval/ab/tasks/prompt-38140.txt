@@ -1,0 +1,251 @@
+ISSUE TITLE: Combination of `GroupBy`, `FirstOrDefault` and `Select` throws a KeyNotFoundException
+
+ISSUE BODY:
+If you use `GroupBy`, `Select` that gets an row from the group with `FirstOrDefault` and then try to reduce the amount of columns returned with another `Select`, you get an KeyNotFoundException:
+
+```C#
+var reports = await context.ReportItems
+    .GroupBy(e => e.Report.Name)
+    .Select(g => new
+    {
+        g.Key,
+        // "g.MaxBy(x => x.Time)" is not supported by EF Core
+        MaxTime = g.OrderByDescending(i => i.Time).FirstOrDefault()
+    })
+    .Where(i => i.MaxTime != null)
+    .Select(i => new
+    {
+        Name = i.Key,
+        TimeName = i.MaxTime.Name,
+        i.MaxTime.Time
+    })
+    .ToListAsync();
+```
+
+### Full code
+
+**.csproj**
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net7.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="7.0.2" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="7.0.2" />
+      <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    </ItemGroup>
+
+</Project>
+```
+
+**Program.cs**
+```C#
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+
+await using var connection = new SqliteConnection("DataSource=:memory:");
+
+await connection.OpenAsync();
+
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite(connection)
+    .Options;
+
+await using var context = new AppDbContext(options);
+
+await context.Database.EnsureCreatedAsync();
+
+var newReport = new Report
+{
+    Name = "Report 1",
+};
+
+context.Reports.Add(newReport);
+
+context.ReportItems.Add(new ReportItem
+{
+    Name = "Item 1",
+    Report = newReport,
+    Time = 10
+});
+
+context.ReportItems.Add(new ReportItem
+{
+    Name = "Item 2",
+    Report = newReport,
+    Time = 20
+});
+
+context.ReportItems.Add(new ReportItem
+{
+    Name = "Item 3",
+    Report = newReport,
+    Time = 30
+});
+
+await context.SaveChangesAsync();
+
+var reports = await context.ReportItems
+    .GroupBy(e => e.Report.Name)
+    .Select(g => new
+    {
+        g.Key,
+        // "g.MaxBy(x => x.Time)" is not supported by EF Core
+        MaxTime = g.OrderByDescending(i => i.Time).FirstOrDefault()
+    })
+    .Where(i => i.MaxTime != null)
+    .Select(i => new
+    {
+        Name = i.Key,
+        TimeName = i.MaxTime.Name,
+        i.MaxTime.Time
+    })
+    .ToListAsync();
+
+foreach (var report in reports)
+{
+    Console.WriteLine($"{report.Name} - {report.TimeName} {report.Time}");
+}
+
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Report> Reports { get; set; } = null!;
+
+    public DbSet<ReportItem> ReportItems { get; set; } = null!;
+}
+
+public class Report
+{
+    public int Id { get; set; }
+
+    public required string Name { get; set; }
+
+    public List<ReportItem> Items { get; set; } = new();
+}
+
+public class ReportItem
+{
+    public int Id { get; set; }
+
+    public required string Name { get; set; }
+
+    public required Report Report { get; set; }
+
+    public required int Time { get; set; }
+}
+```
+
+**Expected output**
+```
+Report 1 - Item 3 30
+```
+
+#### Notes
+Changing the query to `First` without the null-check also throws an exception:
+```C#
+var reports = await context.ReportItems
+    .GroupBy(e => e.Report.Name)
+    .Select(g => new
+    {
+        g.Key,
+        MaxTime = g.OrderByDescending(i => i.Time).First()
+    })
+    .Select(i => new
+    {
+        Name = i.Key,
+        TimeName = i.MaxTime.Name,
+        i.MaxTime.Time
+    })
+    .ToListAsync();
+```
+
+Changing the query to start from `Reports` (without `GroupBy`) and then get the largest one, the query **works** as expected:
+
+```C#
+var reports = await context.Reports
+    .Select(g => new
+    {
+        g.Name,
+        MaxTime = g.Items.OrderByDescending(i => i.Time).FirstOrDefault()
+    })
+    .Where(i => i.MaxTime != null)
+    .Select(i => new
+    {
+        i.Name,
+        TimeName = i.MaxTime.Name,
+        i.MaxTime.Time
+    })
+    .ToListAsync();
+```
+
+If I add an `AsAsyncEnumerable` before the select, the query **works** as intended:
+
+```C#
+var reports = await context.ReportItems
+    .GroupBy(e => e.Report.Name)
+    .Select(g => new
+    {
+        g.Key,
+        MaxTime = g.OrderByDescending(i => i.Time).First()
+    })
+    .AsAsyncEnumerable()
+    .Select(i => new
+    {
+        Name = i.Key,
+        TimeName = i.MaxTime.Name,
+        i.MaxTime.Time
+    })
+    .ToListAsync();
+```
+
+### Stack traces
+
+```
+System.Collections.Generic.KeyNotFoundException: The given key 'EmptyProjectionMember' was not present in the dictionary.
+   at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+   at Microsoft.EntityFrameworkCore.Query.SqlExpressions.SelectExpression.GetProjection(ProjectionBindingExpression projectionBindingExpression)
+   at Microsoft.EntityFrameworkCore.Query.RelationalSqlTranslatingExpressionVisitor.BindProperty(EntityReferenceExpression entityReferenceExpression, IProperty property)
+   at Microsoft.EntityFrameworkCore.Query.RelationalSqlTranslatingExpressionVisitor.TryBindMember(Expression source, MemberIdentity member)
+   at Microsoft.EntityFrameworkCore.Query.RelationalSqlTranslatingExpressionVisitor.VisitMember(MemberExpression memberExpression)
+   at Microsoft.EntityFrameworkCore.Query.RelationalSqlTranslatingExpressionVisitor.TranslateInternal(Expression expression)
+   at Microsoft.EntityFrameworkCore.Query.RelationalSqlTranslatingExpressionVisitor.Translate(Expression expression)
+   at Microsoft.EntityFrameworkCore.Query.Internal.RelationalProjectionBindingExpressionVisitor.Visit(Expression expression)
+   at Microsoft.EntityFrameworkCore.Query.Internal.RelationalProjectionBindingExpressionVisitor.VisitNew(NewExpression newExpression)
+   at Microsoft.EntityFrameworkCore.Query.Internal.RelationalProjectionBindingExpressionVisitor.Visit(Expression expression)
+   at Microsoft.EntityFrameworkCore.Query.Internal.RelationalProjectionBindingExpressionVisitor.Translate(SelectExpression selectExpression, Expression expression)
+   at Microsoft.EntityFrameworkCore.Query.RelationalQueryableMethodTranslatingExpressionVisitor.TranslateSelect(ShapedQueryExpression source, LambdaExpression selector)
+   at Microsoft.EntityFrameworkCore.Query.QueryableMethodTranslatingExpressionVisitor.VisitMethodCall(MethodCallExpression methodCallExpression)
+   at Microsoft.EntityFrameworkCore.Query.RelationalQueryableMethodTranslatingExpressionVisitor.VisitMethodCall(MethodCallExpression methodCallExpression)
+   at Microsoft.EntityFrameworkCore.Query.QueryCompilationContext.CreateQueryExecutor[TResult](Expression query)
+   at Microsoft.EntityFrameworkCore.Storage.Database.CompileQuery[TResult](Expression query, Boolean async)
+   at Microsoft.EntityFrameworkCore.Query.Internal.QueryCompiler.CompileQueryCore[TResult](IDatabase database, Expression query, IModel model, Boolean async)
+   at Microsoft.EntityFrameworkCore.Query.Internal.QueryCompiler.<>c__DisplayClass12_0`1.<ExecuteAsync>b__0()
+   at Microsoft.EntityFrameworkCore.Query.Internal.CompiledQueryCache.GetOrAddQuery[TResult](Object cacheKey, Func`1 compiler)
+   at Microsoft.EntityFrameworkCore.Query.Internal.QueryCompiler.ExecuteAsync[TResult](Expression query, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Query.Internal.EntityQueryProvider.ExecuteAsync[TResult](Expression expression, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Query.Internal.EntityQueryable`1.GetAsyncEnumerator(CancellationToken cancellationToken)
+   at System.Runtime.CompilerServices.ConfiguredCancelableAsyncEnumerable`1.GetAsyncEnumerator()
+   at Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync[TSource](IQueryable`1 source, CancellationToken cancellationToken)
+   at Program.<Main>$(String[] args) in C:\Sources\IssueReport\IssueReport\Program.cs:line 46
+   at Program.<Main>$(String[] args) in C:\Sources\IssueReport\IssueReport\Program.cs:line 63
+   at Program.<Main>$(String[] args) in C:\Sources\IssueReport\IssueReport\Program.cs:line 63
+   at Program.<Main>(String[] args)
+```
+
+### Include provider and version information
+
+EF Core version: 7.0.2
+Database provider: bug found in `Microsoft.EntityFrameworkCore.SqlServer` reproduced in `Microsoft.EntityFrameworkCore.Sqlite`
+Target framework: .NET 7.0 (SDK: 7.0.200, `27f0a7fa5a`)
+Operating system: Windows 11 (22H2)
+IDE: Rider 2022.3.1

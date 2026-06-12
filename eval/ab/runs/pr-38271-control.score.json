@@ -1,0 +1,20 @@
+{
+  "pr": 38271,
+  "arm": "control",
+  "file_recall": 0.333,
+  "symbol_recall": 0.091,
+  "real_files": [
+    "src/EFCore.SqlServer/Metadata/Internal/SqlServerAnnotationNames.cs",
+    "src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
+  ],
+  "real_symbols": 33,
+  "symbols_hit": 3
+}

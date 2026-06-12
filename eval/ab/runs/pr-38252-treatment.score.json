@@ -1,0 +1,18 @@
+{
+  "pr": 38252,
+  "arm": "treatment",
+  "file_recall": 0.0,
+  "symbol_recall": 0.19,
+  "real_files": [
+    "src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Migrations/MigrationsSqlServerTest.cs",
+    "test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Relational/Migrations/Internal/MigrationsModelDiffer.cs",
+    "test/EFCore.Relational.Tests/Migrations/Internal/MigrationsModelDifferTest.cs"
+  ],
+  "files_hit": [],
+  "real_symbols": 21,
+  "symbols_hit": 4
+}

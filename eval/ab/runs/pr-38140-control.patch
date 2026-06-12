@@ -1,0 +1,132 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38140-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/SOLUTION.md"
+new file mode 100644
+index 0000000..c0b6333
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/SOLUTION.md"
+@@ -0,0 +1,23 @@
++# Solution for Issue 38140
++
++## Root Cause
++
++When a query combines `GroupBy`, `Select` (with `FirstOrDefault` picking an entity from the group), `Where` (null check on the entity), and a second `Select` (projecting properties of that entity), EF Core throws a `KeyNotFoundException: The given key 'EmptyProjectionMember' was not present in the dictionary`.
++
++The crash originates in `BindProperty` inside `RelationalSqlTranslatingExpressionVisitor`, in the `{ Subquery: { } subquery }` case. This branch is responsible for translating a property access on an entity that came from a subquery (e.g. the `FirstOrDefault` result stored in a client projection).
++
++The bug: `BindProperty` was **mutating the shared subquery `SelectExpression` in place** by calling `ReplaceProjection` and `ApplyProjection` on it. When the `Where(i => i.MaxTime != null)` clause is processed, EF translates the entity-to-null comparison by calling `BindProperty` on the primary-key property, which replaces the subquery's `_projectionMapping` with just the PK column and then calls `ApplyProjection()`, which **clears `_projectionMapping` entirely** and sets `IsMutable = false`. The subquery expression object is shared (stored in the outer select's `_clientProjections`). When the second `Select` later tries to access `i.MaxTime.Name` and `i.MaxTime.Time`, `GetProjection` is called again on the same now-cleared `_projectionMapping`, causing the `KeyNotFoundException`.
++
++## Fix
++
++In `BindProperty`'s `{ Subquery: { } subquery }` case, **clone the subquery `SelectExpression` before mutating it**. Each property access on the entity now operates on its own independent copy of the subquery, so the original stored in the client projections is never modified.
++
++The `SelectExpression.Clone()` method (already available on the type) creates a deep copy with remapped table aliases, ensuring the cloned expression is self-consistent.
++
++## Files Changed
++
++- `src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs`  
++  In `BindProperty`, replaced direct mutation of `subSelectExpression` with cloning it first via `subSelectExpression.Clone()`, then operating on the clone.
++
++- `test/EFCore.Specification.Tests/Query/AdHocMiscellaneousQueryTestBase.cs`  
++  Added test `GroupBy_Select_with_FirstOrDefault_followed_by_projecting_entity_properties` (region 38140) covering the exact scenario from the bug report: `GroupBy` → `Select` with `FirstOrDefault` → `Where` null-check → `Select` projecting multiple entity properties.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
+index 4242f97..daf3a01 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
+@@ -1351,12 +1351,16 @@ private SqlExpression BindProperty(StructuralTypeReferenceExpression typeReferen
+                 var subSelectExpression = (SelectExpression)subquery.QueryExpression;
+ 
+                 var projectionBindingExpression = (ProjectionBindingExpression)entityShaper.ValueBufferExpression;
+-                var projection = (StructuralTypeProjectionExpression)subSelectExpression.GetProjection(projectionBindingExpression);
++
++                // Clone the subquery to avoid mutating the original, which may be referenced multiple times
++                // (e.g. when multiple properties are accessed on the same entity returned by FirstOrDefault inside a GroupBy.Select).
++                var clonedSelectExpression = subSelectExpression.Clone();
++                var projection = (StructuralTypeProjectionExpression)clonedSelectExpression.GetProjection(projectionBindingExpression);
+                 var innerProjection = projection.BindProperty(property);
+-                subSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
+-                subSelectExpression.ApplyProjection();
++                clonedSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
++                clonedSelectExpression.ApplyProjection();
+ 
+-                return new ScalarSubqueryExpression(subSelectExpression);
++                return new ScalarSubqueryExpression(clonedSelectExpression);
+             }
+ 
+             default:
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/test/EFCore.Specification.Tests/Query/AdHocMiscellaneousQueryTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/test/EFCore.Specification.Tests/Query/AdHocMiscellaneousQueryTestBase.cs"
+index 60a9d18..9add545 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/test/EFCore.Specification.Tests/Query/AdHocMiscellaneousQueryTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-control/test/EFCore.Specification.Tests/Query/AdHocMiscellaneousQueryTestBase.cs"
+@@ -2310,4 +2310,73 @@ public FooConverter()
+     }
+ 
+     #endregion
++
++    #region 38140
++
++    [Theory, MemberData(nameof(IsAsyncData))]
++    public virtual async Task GroupBy_Select_with_FirstOrDefault_followed_by_projecting_entity_properties(bool async)
++    {
++        var contextFactory = await InitializeNonSharedTest<Context38140>(
++            seed: async context =>
++            {
++                var report = new Context38140.Report { Id = 1, Name = "Report 1" };
++                context.Add(report);
++                context.AddRange(
++                    new Context38140.ReportItem { Id = 1, Name = "Item 1", ReportId = 1, Time = 10 },
++                    new Context38140.ReportItem { Id = 2, Name = "Item 2", ReportId = 1, Time = 20 },
++                    new Context38140.ReportItem { Id = 3, Name = "Item 3", ReportId = 1, Time = 30 });
++                await context.SaveChangesAsync();
++            });
++
++        using var context = contextFactory.CreateDbContext();
++
++        var query = context.Set<Context38140.ReportItem>()
++            .GroupBy(e => e.Report.Name)
++            .Select(g => new
++            {
++                g.Key,
++                MaxTime = g.OrderByDescending(i => i.Time).FirstOrDefault()
++            })
++            .Where(i => i.MaxTime != null)
++            .Select(i => new
++            {
++                Name = i.Key,
++                TimeName = i.MaxTime.Name,
++                i.MaxTime.Time
++            });
++
++        var result = async
++            ? await query.ToListAsync()
++            : query.ToList();
++
++        Assert.Equal(1, result.Count);
++        Assert.Equal("Report 1", result[0].Name);
++        Assert.Equal("Item 3", result[0].TimeName);
++        Assert.Equal(30, result[0].Time);
++    }
++
++    protected class Context38140(DbContextOptions options) : DbContext(options)
++    {
++        protected override void OnModelCreating(ModelBuilder modelBuilder)
++        {
++        }
++
++        public class Report
++        {
++            public int Id { get; set; }
++            public required string Name { get; set; }
++            public List<ReportItem> Items { get; set; } = [];
++        }
++
++        public class ReportItem
++        {
++            public int Id { get; set; }
++            public required string Name { get; set; }
++            public int ReportId { get; set; }
++            public Report Report { get; set; }
++            public int Time { get; set; }
++        }
++    }
++
++    #endregion
+ }

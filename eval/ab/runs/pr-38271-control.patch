@@ -1,0 +1,195 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38271-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/SOLUTION.md"
+new file mode 100644
+index 0000000..d3ef2d7
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/SOLUTION.md"
+@@ -0,0 +1,24 @@
++# Solution
++
++## Root-Cause Summary
++
++When an index facet is changed (e.g. `FillFactor`) EF Core's SQL Server migration generator produces a `DROP INDEX` followed by a `CREATE INDEX`. These are two separate DDL statements, meaning the old index is destroyed before the new one exists — blocking query plans that depend on that index during rebuild on large tables.
++
++SQL Server supports `CREATE INDEX ... WITH (DROP_EXISTING = ON)`, which atomically replaces the old index with the new one. Queries can continue using the old index while the new one is being built, and the swap happens atomically at the end.
++
++## Change Description
++
++The fix is in `SqlServerMigrationsSqlGenerator`. When a `DropIndexOperation` and a `CreateIndexOperation` for the **same index** (same name, table, schema) appear consecutively in the same migration batch, the two operations are collapsed into a single `CREATE INDEX ... WITH (DROP_EXISTING = ON)`:
++
++1. **`Generate(DropIndexOperation)`** — a new helper `HasFollowingCreateIndexOperation` checks whether a matching `CreateIndexOperation` (non-full-text, non-vector, non-JSON) appears later in `_operations`. If so, the `DROP INDEX` statement is suppressed entirely (early return without emitting SQL). Memory-optimized tables are excluded since they use different syntax.
++
++2. **`Generate(CreateIndexOperation)`** — a new helper `HasPrecedingDropIndexOperation` checks whether a matching `DropIndexOperation` appears earlier in `_operations`. If so, a private `_dropExistingIndex` flag is set `true` around the `base.Generate(...)` call (which invokes `IndexOptions`).
++
++3. **`IndexOptions`** — when `_dropExistingIndex` is `true`, `DROP_EXISTING = ON` is appended to the `WITH (...)` options list, producing the correct SQL fragment.
++
++The change is fully backwards-compatible: if the drop and create operations target different indexes, or involve full-text / vector / JSON indexes, the existing two-statement behavior is preserved.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs`
++- `test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs`
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
+index a2fc0ea..c5930b7 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/src/EFCore.SqlServer/Migrations/SqlServerMigrationsSqlGenerator.cs"
+@@ -31,6 +31,7 @@ public class SqlServerMigrationsSqlGenerator : MigrationsSqlGenerator
+ {
+     private IReadOnlyList<MigrationOperation> _operations = null!;
+     private int _variableCounter = -1;
++    private bool _dropExistingIndex;
+ 
+     private readonly ICommandBatchPreparer _commandBatchPreparer;
+ 
+@@ -894,7 +895,18 @@ protected override void Generate(RenameSequenceOperation operation, IModel? mode
+                 ? new MigrationCommandListBuilder(Dependencies)
+                 : builder;
+ 
+-            base.Generate(operation, model, subBuilder, terminate: false);
++            // If a DropIndexOperation for the same index preceded this operation in the same batch,
++            // the DROP was suppressed; use DROP_EXISTING = ON so the index is rebuilt atomically,
++            // allowing queries to keep using the old index while the new one is being created.
++            _dropExistingIndex = HasPrecedingDropIndexOperation(operation);
++            try
++            {
++                base.Generate(operation, model, subBuilder, terminate: false);
++            }
++            finally
++            {
++                _dropExistingIndex = false;
++            }
+ 
+             if (needsExec)
+             {
+@@ -1549,6 +1561,16 @@ protected override void Generate(AlterTableOperation operation, IModel? model, M
+         }
+ 
+         var memoryOptimized = IsMemoryOptimized(operation, model, operation.Schema, operation.Table);
++
++        // If a CreateIndexOperation with the same name/table/schema follows in the same batch,
++        // skip the DROP INDEX here: the subsequent CREATE INDEX will include DROP_EXISTING = ON,
++        // which is more efficient (the old index stays available while the new one is being built).
++        if (!memoryOptimized
++            && HasFollowingCreateIndexOperation(operation))
++        {
++            return;
++        }
++
+         if (memoryOptimized)
+         {
+             builder
+@@ -2205,6 +2227,11 @@ protected override void IndexOptions(MigrationOperation operation, IModel? model
+             }
+         }
+ 
++        if (_dropExistingIndex)
++        {
++            options.Add("DROP_EXISTING = ON");
++        }
++
+         if (options.Count > 0)
+         {
+             builder
+@@ -2330,6 +2357,40 @@ protected override void ForeignKeyAction(ReferentialAction referentialAction, Mi
+         }
+     }
+ 
++    /// <summary>
++    ///     Returns <see langword="true" /> if a <see cref="CreateIndexOperation" /> that targets the same
++    ///     index (name, table, schema) as <paramref name="operation" /> appears after it in the current
++    ///     batch, and that operation is eligible for <c>DROP_EXISTING = ON</c> (i.e. not a full-text,
++    ///     vector, or JSON index).
++    /// </summary>
++    private bool HasFollowingCreateIndexOperation(DropIndexOperation operation)
++        => _operations is not null
++            && _operations
++                .SkipWhile(o => o != operation)
++                .Skip(1)
++                .OfType<CreateIndexOperation>()
++                .Any(o => o.Name == operation.Name
++                    && o.Table == operation.Table
++                    && o.Schema == operation.Schema
++                    && o[SqlServerAnnotationNames.FullTextIndex] is null
++                    && o[SqlServerAnnotationNames.VectorIndexMetric] is null
++                    && o[RelationalAnnotationNames.JsonIndex] is null);
++
++    /// <summary>
++    ///     Returns <see langword="true" /> if a <see cref="DropIndexOperation" /> that targets the same
++    ///     index (name, table, schema) as <paramref name="operation" /> appears before it in the current
++    ///     batch, indicating the drop was suppressed and <c>DROP_EXISTING = ON</c> should be used.
++    /// </summary>
++    private bool HasPrecedingDropIndexOperation(CreateIndexOperation operation)
++        => _operations is not null
++            && _operations
++                .TakeWhile(o => o != operation)
++                .OfType<DropIndexOperation>()
++                .Any(o => o.Name == operation.Name
++                    && o.Table == operation.Table
++                    && o.Schema == operation.Schema
++                    && o[SqlServerAnnotationNames.FullTextIndex] is null);
++
+     /// <summary>
+     ///     Generates SQL to drop the given indexes.
+     /// </summary>
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs"
+index ebf25dd..96de1f0 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38271/test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38271-control/test/EFCore.SqlServer.FunctionalTests/Migrations/SqlServerMigrationsSqlGeneratorTest.cs"
+@@ -79,6 +79,58 @@ public void CreateIndexOperation_unique_datacompression(DataCompressionType data
+ """);
+     }
+ 
++    [Fact]
++    public void DropIndex_followed_by_CreateIndex_uses_drop_existing()
++    {
++        Generate(
++            new DropIndexOperation
++            {
++                Name = "IX_People_Name",
++                Table = "People",
++                Schema = "dbo"
++            },
++            new CreateIndexOperation
++            {
++                Name = "IX_People_Name",
++                Table = "People",
++                Schema = "dbo",
++                Columns = ["FirstName", "LastName"],
++                [SqlServerAnnotationNames.FillFactor] = 80
++            });
++
++        AssertSql(
++            """
++CREATE INDEX [IX_People_Name] ON [dbo].[People] ([FirstName], [LastName]) WITH (FILLFACTOR = 80, DROP_EXISTING = ON);
++""");
++    }
++
++    [Fact]
++    public void DropIndex_followed_by_CreateIndex_different_name_does_not_use_drop_existing()
++    {
++        Generate(
++            new DropIndexOperation
++            {
++                Name = "IX_People_Name",
++                Table = "People",
++                Schema = "dbo"
++            },
++            new CreateIndexOperation
++            {
++                Name = "IX_People_OtherName",
++                Table = "People",
++                Schema = "dbo",
++                Columns = ["FirstName", "LastName"]
++            });
++
++        AssertSql(
++            """
++DROP INDEX [IX_People_Name] ON [dbo].[People];
++GO
++
++CREATE INDEX [IX_People_OtherName] ON [dbo].[People] ([FirstName], [LastName]);
++""");
++    }
++
+     [Fact]
+     public virtual void AddColumnOperation_identity_legacy()
+     {

@@ -1,0 +1,127 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..823e91b
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/SOLUTION.md"
+@@ -0,0 +1,30 @@
++# Solution: SIGN function return type mismatch
++
++## Root Cause
++
++T-SQL's `SIGN` function returns the **same data type as its input** (per MSDN). C#'s `Math.Sign` always returns `int`. When the input column is `decimal` (or any non-`int` numeric type), SQL Server returns a `decimal` value, but EF Core's materializer calls `SqlDataReader.GetInt32()` expecting `int`, causing `InvalidCastException: Unable to cast System.Decimal to System.Int32`.
++
++The existing code called `TranslateFunction("SIGN", arg, nullTypeMapping: true)`, which passed `method.ReturnType` (`int`) as the declared CLR type but emitted no `CAST` in SQL, leaving a mismatch between what SQL Server actually returns and what the reader expects.
++
++## Change Description
++
++Replaced the `TranslateFunction("SIGN", ...)` call with a dedicated `TranslateSign` method (following the same pattern as `TranslateTruncate` and `TranslateRound` in the same file). The new method:
++
++1. Emits `SIGN(<arg>)` with the argument's own type and type mapping (so the function call is correctly typed in SQL).
++2. Wraps the result in `CAST(... AS int)` for all argument types that are not already `int` (`decimal`, `double`, `float`, `long`, `sbyte`, `short`). This makes the SQL expression type match `int` — the C# return type of every `Math.Sign` overload.
++
++The CAST is omitted when the argument is already `int` (SIGN of an int still returns int in T-SQL), avoiding a no-op cast.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs` — core fix
++- `test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs` — added `Sign_decimal()` test method to the shared base
++- `test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs` — updated expected SQL for `Sign()` and `Sign_float()` (now emit CAST), added `Sign_decimal()` override with expected SQL
++
++## Precedent Usage
++
++**Query 1:** `"SIGN function return type cast int decimal math"`
++- Result: BELOW THRESHOLD (score 0.312, PR #37867 about `GetConversion` refactor). Not relevant — ignored.
++
++**Query 2:** `"CAST return type mismatch function translation SQL Server"`
++- Result: BELOW THRESHOLD (score 0.421, PR #38156 about stripping no-op SQL CASTs). Tangentially related (shows `sqlExpressionFactory.Convert` usage pattern) but not directly applicable — used only as a cross-check that the Convert approach is idiomatic; the actual pattern was found by reading the existing `TranslateTruncate`/`TranslateRound` methods in the same file.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
+index 06f9e9b..9de85b0 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/src/EFCore.SqlServer/Query/Internal/Translators/SqlServerMathTranslator.cs"
+@@ -93,7 +93,7 @@ public class SqlServerMathTranslator(ISqlExpressionFactory sqlExpressionFactory)
+             nameof(Math.Sign) when arguments is [var arg]
+                 && (arg.Type == typeof(decimal) || arg.Type == typeof(double) || arg.Type == typeof(float)
+                     || arg.Type == typeof(int) || arg.Type == typeof(long) || arg.Type == typeof(sbyte) || arg.Type == typeof(short))
+-                => TranslateFunction("SIGN", arg, nullTypeMapping: true),
++                => TranslateSign(arg),
+             nameof(double.DegreesToRadians) when arguments is [var arg]
+                 && (arg.Type == typeof(double) || arg.Type == typeof(float))
+                 => TranslateFunction("RADIANS", arg),
+@@ -142,6 +142,28 @@ SqlExpression TranslateBinaryFunction(string sqlFunctionName, SqlExpression arg1
+                 typeMapping);
+         }
+ 
++        SqlExpression TranslateSign(SqlExpression arg)
++        {
++            var typeMapping = ExpressionExtensions.InferTypeMapping(arg);
++            SqlExpression result = sqlExpressionFactory.Function(
++                "SIGN",
++                [sqlExpressionFactory.ApplyTypeMapping(arg, typeMapping)],
++                nullable: true,
++                argumentsPropagateNullability: Statics.TrueArrays[1],
++                arg.Type,
++                typeMapping);
++
++            // T-SQL SIGN returns the same type as its argument, but Math.Sign always returns int.
++            // For non-integer argument types (decimal, double, float, long, sbyte, short), we must
++            // CAST the result to int to match the expected C# return type.
++            if (arg.Type != typeof(int))
++            {
++                result = sqlExpressionFactory.Convert(result, typeof(int));
++            }
++
++            return result;
++        }
++
+         SqlExpression TranslateTruncate(SqlExpression argument)
+         {
+             // C# has Truncate over decimal/double/float only so our argument will be one of those types (compiler puts convert node)
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
+index f6b9e99..3f6b99c 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/test/EFCore.Specification.Tests/Query/Translations/MathTranslationsTestBase.cs"
+@@ -193,6 +193,10 @@ public virtual Task Sign()
+     public virtual Task Sign_float()
+         => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => MathF.Sign(b.Float) > 0));
+ 
++    [ConditionalFact]
++    public virtual Task Sign_decimal()
++        => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => Math.Sign(b.Decimal) > 0));
++
+     [ConditionalFact]
+     public virtual Task Max()
+         => AssertQuery(ss => ss.Set<BasicTypesEntity>().Where(b => Math.Max(b.Int, b.Short - 3) == b.Int));
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
+index 3a848d3..04d4ac6 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38260/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38260-treatment/test/EFCore.SqlServer.FunctionalTests/Query/Translations/MathTranslationsSqlServerTest.cs"
+@@ -461,7 +461,7 @@ public override async Task Sign()
+             """
+ SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
+ FROM [BasicTypesEntities] AS [b]
+-WHERE SIGN([b].[Double]) > 0
++WHERE CAST(SIGN([b].[Double]) AS int) > 0
+ """);
+     }
+ 
+@@ -473,7 +473,19 @@ public override async Task Sign_float()
+             """
+ SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
+ FROM [BasicTypesEntities] AS [b]
+-WHERE SIGN([b].[Float]) > 0
++WHERE CAST(SIGN([b].[Float]) AS int) > 0
++""");
++    }
++
++    public override async Task Sign_decimal()
++    {
++        await base.Sign_decimal();
++
++        AssertSql(
++            """
++SELECT [b].[Id], [b].[Bool], [b].[Byte], [b].[ByteArray], [b].[DateOnly], [b].[DateTime], [b].[DateTimeOffset], [b].[Decimal], [b].[Double], [b].[Enum], [b].[FlagsEnum], [b].[Float], [b].[Guid], [b].[Int], [b].[Long], [b].[Short], [b].[String], [b].[TimeOnly], [b].[TimeSpan]
++FROM [BasicTypesEntities] AS [b]
++WHERE CAST(SIGN([b].[Decimal]) AS int) > 0
+ """);
+     }
+ 

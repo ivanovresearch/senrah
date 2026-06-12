@@ -1,0 +1,12 @@
+{
+  "pr": 38260,
+  "issue": 38249,
+  "issue_title": "SQL Server: Math.Sign(decimal) throws InvalidCastException - SIGN returns decimal, expected Int32",
+  "issue_body": "### Bug description\n\n`Math.Sign(decimal)` in a SQL Server query throws `InvalidCastException` at materialization time. The translator emits a bare `SIGN(<col>)`, but per the [T-SQL `SIGN` documentation](https://learn.microsoft.com/sql/t-sql/functions/sign-transact-sql) `SIGN` returns the same data type as its input. For a `decimal` column it returns `decimal`, not `int`. EF Core's materializer reads the column with `SqlDataReader.GetInt32` (matching the C# return type of `Math.Sign(decimal)`, which is `int`), and that throws.\n\n### Your code\n\n```csharp\nusing Microsoft.EntityFrameworkCore;\n\nusing var db = new ReproContext();\ndb.Database.EnsureDeleted();\ndb.Database.EnsureCreated();\n\ndb.Samples.Add(new Sample { Value = 1m });\ndb.SaveChanges();\n\n_ = db.Samples.Select(s => Math.Sign(s.Value)).ToList();\n\nclass Sample\n{\n    public int Id { get; set; }\n    public decimal Value { get; set; }\n}\n\nclass ReproContext : DbContext\n{\n    public DbSet<Sample> Samples => Set<Sample>();\n\n    protected override void OnConfiguring(DbContextOptionsBuilder options)\n        => options.UseSqlServer(@\"Server=(localdb)\\mssqllocaldb;Database=EfCore10SignRepro\");\n}\n```\n\n### Stack traces\n\n```text\nSystem.InvalidCastException: Unable to cast object of type 'System.Decimal' to type 'System.Int32'.\n   at Microsoft.Data.SqlClient.SqlBuffer.get_Int32()\n   at Microsoft.Data.SqlClient.SqlDataReader.GetInt32(Int32 i)\n   at lambda_method...(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)\n   at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.Enumerator.MoveNext()\n   at System.Collections.Generic.List`1..ctor(IEnumerable`1 collection)\n   at System.Linq.Enumerable.ToList[TSource](IEnumerable`1 source)\n```\n\n### Verbose output\n\n```text\n\n```\n\n### EF Core version\n\n10.0.7\n\n### Database provider\n\nMicrosoft.EntityFrameworkCore.SqlServer\n\n### Target framework\n\n.NET 10\n\n### Operating system\n\nLinux\n\n### IDE\n\nNone",
+  "issue_state": "closed",
+  "merge_commit": "d7ce75abbaecd603d4a6791cb465eb3087ab12a2",
+  "parents": [
+    "d6aee5abc36b80c7b81710bca97ecbb8299ad491"
+  ],
+  "pr_title": "Wrap SIGN() in CAST(... AS int) for SQL Server"
+}

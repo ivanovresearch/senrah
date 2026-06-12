@@ -1,0 +1,12 @@
+{
+  "pr": 38344,
+  "issue": 32201,
+  "issue_title": "Support ORDER BY in SQLite aggregate functions",
+  "issue_body": "SQLite 3.44.0 is out with support for ORDER BY for aggregate functions ([release notes](https://sqlite.org/releaselog/3_44_0.html)); we should add support for that in query processing.",
+  "issue_state": "closed",
+  "merge_commit": "d87e0d3080f2e374a8905db248d6836559381dff",
+  "parents": [
+    "16ef9a35c1741c80963e20c1c30a9687424e46d5"
+  ],
+  "pr_title": "Translate string.Join/Concat with ordering on SQLite"
+}

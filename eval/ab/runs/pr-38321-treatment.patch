@@ -1,0 +1,163 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..f42ceea
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/SOLUTION.md"
+@@ -0,0 +1,65 @@
++# Solution for Issue #38321
++
++## Root Cause
++
++`SqlServerQueryableMethodTranslatingExpressionVisitor.TransformJsonQueryToTable` looked up
++the JSON container column type-mapping by calling `GetTableMappings()` on the containing entity
++type and then calling `Single()` on the result. When the entity is mapped to a database view
++(via `ToView()`) instead of a table, `GetTableMappings()` returns an empty enumerable, causing
++`Enumerable.Single` to throw `InvalidOperationException: Sequence contains no elements`.
++
++The stack trace in the issue pinpoints this exactly:
++
++```
++at System.Linq.Enumerable.Single[TSource](IEnumerable`1 source)
++at Microsoft.EntityFrameworkCore.SqlServer.Query.Internal
++       .SqlServerQueryableMethodTranslatingExpressionVisitor.TransformJsonQueryToTable(...)
++```
++
++## Change Description
++
++**File:** `src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs`
++
++The three-line lookup was extended to search both table mappings and view mappings before
++calling `Single()`:
++
++```csharp
++// Before
++var containerColumn = structuralType.ContainingEntityType.GetTableMappings()
++    .Select(m => m.Table.FindColumn(containerColumnName))
++    .Single(c => c is not null)!;
++
++// After
++var containingEntityType = structuralType.ContainingEntityType;
++var containerColumn = containingEntityType.GetTableMappings().Cast<ITableMappingBase>()
++    .Concat(containingEntityType.GetViewMappings())
++    .Select(m => m.Table.FindColumn(containerColumnName))
++    .Single(c => c is not null)!;
++```
++
++Both `ITableMapping` and `IViewMapping` extend `ITableMappingBase`, which exposes
++`ITableBase Table { get; }`. `ITableBase.FindColumn(string)` returns `IColumnBase?`, which
++carries the `StoreTypeMapping` property used downstream — so no other callers needed to change.
++
++The variable rename from `entityType` to `containingEntityType` avoids a name collision with
++the `IEntityType entityType` pattern variable in the immediately following `switch` expression.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs`
++  — fix: search view mappings in addition to table mappings when resolving the container column.
++
++- `test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs`
++  — test: `Where_on_json_owned_many_mapped_to_view` exercises the exact scenario from the issue
++  (entity mapped to view with `OwnsMany(...).ToJson()`, filtered with `.Any()`).
++
++## Precedent Usage
++
++1. Query: `"json column view mapped entity GetTableMappings GetViewMappings OPENJSON TransformJsonQueryToTable"`
++   — Result below threshold (score 0.424). Not useful; the returned PR was unrelated scaffolding work.
++
++2. Query: `"TransformJsonQueryToTable view mapping Single no elements"`
++   — Result below threshold (score 0.417). Same unrelated PR returned. Ignored.
++
++No precedent results were relevant; the fix was derived from reading the metadata extension APIs
++(`RelationalTypeBaseExtensions.cs`) and interface hierarchy (`ITableMappingBase`, `IViewMapping`).
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
+index f7e2368..51a344a 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
+@@ -541,7 +541,9 @@ protected override ShapedQueryExpression TransformJsonQueryToTable(JsonQueryExpr
+         // Note that we assume exactly one column with the given name mapped to the entity (despite entity splitting).
+         // See #38060 about improving this.
+         var containerColumnName = structuralType.GetContainerColumnName()!;
+-        var containerColumn = structuralType.ContainingEntityType.GetTableMappings()
++        var containingEntityType = structuralType.ContainingEntityType;
++        var containerColumn = containingEntityType.GetTableMappings().Cast<ITableMappingBase>()
++            .Concat(containingEntityType.GetViewMappings())
+             .Select(m => m.Table.FindColumn(containerColumnName))
+             .Single(c => c is not null)!;
+ 
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs"
+index 48e637c..5b3291d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38321-treatment/test/EFCore.SqlServer.FunctionalTests/Query/AdHocJsonQuerySqlServerTestBase.cs"
+@@ -1,4 +1,4 @@
+-// Licensed to the .NET Foundation under one or more agreements.
++﻿// Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ #pragma warning disable EF8001 // Owned JSON entities are obsolete
+@@ -696,4 +696,66 @@ SELECT COUNT(*)
+ WHERE [e].[Json] = @entity_equality_complexType
+ """);
+     }
++
++    #region 38321
++
++    [Fact]
++    public virtual async Task Where_on_json_owned_many_mapped_to_view()
++    {
++        var contextFactory = await InitializeNonSharedTest<DbContext>(
++            onModelCreating: modelBuilder =>
++            {
++                modelBuilder.Entity<PersonOrdersView38321>(entity =>
++                {
++                    entity.HasNoKey();
++                    entity.ToView("PersonOrdersView38321");
++                    entity.OwnsMany(e => e.OrderIds, builder => builder.ToJson().HasColumnType(JsonColumnType));
++                });
++            },
++            seed: async ctx =>
++            {
++                await ctx.Database.ExecuteSqlAsync(
++                    $$"""
++CREATE TABLE [Persons38321] (
++    [PersonId] int NOT NULL PRIMARY KEY,
++    [OrderIds] nvarchar(max) NULL
++)
++""");
++
++                await ctx.Database.ExecuteSqlAsync(
++                    $$"""
++CREATE VIEW [PersonOrdersView38321] AS
++SELECT [PersonId], [OrderIds] FROM [Persons38321]
++""");
++
++                await ctx.Database.ExecuteSqlAsync(
++                    $$"""
++INSERT INTO [Persons38321] ([PersonId], [OrderIds])
++VALUES (1, N'[{"Value":10},{"Value":20}]'),
++       (2, N'[{"Value":30}]')
++""");
++            });
++
++        await using var context = contextFactory.CreateDbContext();
++
++        var result = await context.Set<PersonOrdersView38321>()
++            .Where(po => po.OrderIds.Any(oId => oId.Value == 10))
++            .ToListAsync();
++
++        Assert.Single(result);
++        Assert.Equal(1, result[0].PersonId);
++    }
++
++    private class PersonOrdersView38321
++    {
++        public int PersonId { get; set; }
++        public List<OrderId38321> OrderIds { get; set; } = [];
++    }
++
++    private class OrderId38321
++    {
++        public int Value { get; set; }
++    }
++
++    #endregion
+ }

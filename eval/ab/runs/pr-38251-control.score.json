@@ -1,0 +1,18 @@
+{
+  "pr": 38251,
+  "arm": "control",
+  "file_recall": 0.5,
+  "symbol_recall": 0.125,
+  "real_files": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryStringFactory.cs",
+    "test/EFCore.SqlServer.Tests/Query/SqlServerQueryStringFactoryTest.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryStringFactory.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.SqlServer/Query/Internal/SqlServerQueryStringFactory.cs"
+  ],
+  "real_symbols": 24,
+  "symbols_hit": 3
+}

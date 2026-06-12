@@ -1,0 +1,64 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38321-control/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38321-control/SOLUTION.md"
+new file mode 100644
+index 0000000..08b68f7
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38321-control/SOLUTION.md"
+@@ -0,0 +1,43 @@
++# Solution for Issue #38321
++
++## Root Cause
++
++`SqlServerQueryableMethodTranslatingExpressionVisitor.TransformJsonQueryToTable` looked up the
++container column (the JSON column whose type mapping drives OPENJSON generation) exclusively via
++`IEntityType.GetTableMappings()`. When the entity is mapped to a **view** (`.ToView(...)`) instead
++of a table, `GetTableMappings()` returns an empty sequence. The subsequent `.Single(c => c is not
++null)` call then throws `InvalidOperationException: Sequence contains no elements`.
++
++The regression was introduced when the code was changed to look up the container column from the
++relational model rather than directly from the property. View mappings were not included in the
++lookup.
++
++## Change
++
++**File:** `src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs`
++
++In `TransformJsonQueryToTable`, the line that finds the container column now concatenates both
++table mappings and view mappings (cast to the common `ITableMappingBase` interface) before
++searching for the column:
++
++```csharp
++// Before (fails for view-mapped entities)
++var containerColumn = structuralType.ContainingEntityType.GetTableMappings()
++    .Select(m => m.Table.FindColumn(containerColumnName))
++    .Single(c => c is not null)!;
++
++// After (handles tables and views)
++var containingEntityType = structuralType.ContainingEntityType;
++var containerColumn = containingEntityType.GetTableMappings().Cast<ITableMappingBase>()
++    .Concat(containingEntityType.GetViewMappings())
++    .Select(m => m.Table.FindColumn(containerColumnName))
++    .Single(c => c is not null)!;
++```
++
++Both `ITableMapping` and `IViewMapping` extend `ITableMappingBase`, which exposes `ITableBase
++Table` and `ITableBase.FindColumn(string)`. This means the column lookup works correctly for
++both tables and views through the same interface.
++
++## Files Edited
++
++- `src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs`
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38321-control/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
+index f7e2368..51a344a 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38321/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38321-control/src/EFCore.SqlServer/Query/Internal/SqlServerQueryableMethodTranslatingExpressionVisitor.cs"
+@@ -541,7 +541,9 @@ protected override ShapedQueryExpression TransformJsonQueryToTable(JsonQueryExpr
+         // Note that we assume exactly one column with the given name mapped to the entity (despite entity splitting).
+         // See #38060 about improving this.
+         var containerColumnName = structuralType.GetContainerColumnName()!;
+-        var containerColumn = structuralType.ContainingEntityType.GetTableMappings()
++        var containingEntityType = structuralType.ContainingEntityType;
++        var containerColumn = containingEntityType.GetTableMappings().Cast<ITableMappingBase>()
++            .Concat(containingEntityType.GetViewMappings())
+             .Select(m => m.Table.FindColumn(containerColumnName))
+             .Single(c => c is not null)!;
+ 

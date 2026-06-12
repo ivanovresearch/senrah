@@ -1,0 +1,315 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..8fa7e7d
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/SOLUTION.md"
+@@ -0,0 +1,48 @@
++# Solution: Cosmos support for top-level Any()
++
++## Root Cause
++
++Cosmos DB does not support uncorrelated subqueries. The existing translation for top-level `Any()` over a root entity query generated:
++
++```sql
++SELECT VALUE EXISTS (
++    SELECT 1
++    FROM root c
++    WHERE (c["Discriminator"] = "Customer"))
++```
++
++`EXISTS(SELECT ... FROM root c ...)` is an uncorrelated subquery at the outermost level, which Cosmos rejects with a `BadRequest` error. This affected `Any()`, `Any(predicate)`, `Contains()`, and other operators that internally delegate to `Any`.
++
++## Change Description
++
++In `CosmosQueryableMethodTranslatingExpressionVisitor.TranslateAny`, added a special path for top-level root-entity queries (`!_subquery && subquery.Sources is [{ WithIn: false }, ..]`):
++
++Instead of wrapping in `EXISTS(subquery)`, the method now:
++1. Applies `LIMIT 1` to the existing `SelectExpression` (fails gracefully if a limit is already present from a prior `Take`)
++2. Clears orderings (irrelevant for existence check)
++3. Replaces the projection mapping with `SqlConstantExpression(true)`
++4. Returns `SingleOrDefault` cardinality — if Cosmos returns one row (`[true]`), the result is `true`; if it returns no rows (`[]`), `SingleOrDefault<bool>` returns `false` (the default)
++
++Generated SQL (e.g. for `Set<Customer>().OrderBy(...).ThenBy(...).Any()`):
++
++```sql
++SELECT VALUE true
++FROM root c
++OFFSET 0 LIMIT 1
++```
++
++When a prior `Take` has already set a limit, `TryApplyLimit` cannot stack another limit (no subquery pushdown in Cosmos), so the method returns `null` (translation failure). This is better than the previous behavior of generating invalid SQL that throws at runtime.
++
++## Files Edited
++
++- `src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs` — Core fix in `TranslateAny`
++- `test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs` — Updated `Any_simple`, `Any_predicate`, `OrderBy_ThenBy_Any` (now expect success + correct SQL), `Skip_Take_Any` (now expects translation failure instead of runtime CosmosException)
++- `test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs` — Updated `Contains_top_level`, `Contains_over_entityType_with_null_should_rewrite_to_false` (now expect success + correct SQL)
++
++## Precedent Usage
++
++**Query 1:** `"Cosmos Any top-level EXISTS LIMIT 1 uncorrelated subquery"` — returned PR #37603 (score 0.51, below threshold). The PR added the `IsRootEntityQuery` helper (`subquery.Sources is [{ WithIn: false }, ..]`) to detect root entity queries in `TranslateSetOperation`. I reused the same detection pattern in `TranslateAny`.
++
++**Query 2:** `"top level Any boolean OFFSET LIMIT true projection"` — returned only below-threshold results. Not useful.
++
++**Query 3:** `"CosmosQueryableMethodTranslatingExpressionVisitor root entity query non-correlated subquery detection"` — again returned PR #37603 as the top result. Confirmed the `IsRootEntityQuery` pattern and the `SourceExpression.WithIn` field as the discriminator between root collection queries and array-join sources.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs"
+index 7de211b..1626b96 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/src/EFCore.Cosmos/Query/Internal/CosmosQueryableMethodTranslatingExpressionVisitor.cs"
+@@ -419,7 +419,30 @@ private ShapedQueryExpression CreateShapedQueryExpression(SelectExpression selec
+             return source.Update(select, new ProjectionBindingExpression(select, new ProjectionMember(), typeof(int)));
+         }
+ 
++        // For top-level Any() over a root entity query (not in a subquery), Cosmos does not support uncorrelated EXISTS subqueries.
++        // Instead, translate to OFFSET 0 LIMIT 1 with a constant true projection; if any rows are returned, Any() is true,
++        // and if no rows are returned, SingleOrDefault returns false (the default of bool).
+         var subquery = (SelectExpression)source.QueryExpression;
++        if (!_subquery && subquery.Sources is [{ WithIn: false }, ..])
++        {
++            if (!TryApplyLimit(subquery, _sqlExpressionFactory.Constant(1)))
++            {
++                return null;
++            }
++
++            subquery.ClearOrdering();
++
++            var trueConstant = _sqlExpressionFactory.Constant(true, _typeMappingSource.FindMapping(typeof(bool)));
++            subquery.ReplaceProjectionMapping(new Dictionary<ProjectionMember, Expression> { { new ProjectionMember(), trueConstant } });
++
++            return source
++                .UpdateShaperExpression(
++                    Expression.Convert(
++                        new ProjectionBindingExpression(subquery, new ProjectionMember(), typeof(bool?)),
++                        typeof(bool)))
++                .UpdateResultCardinality(ResultCardinality.SingleOrDefault);
++        }
++
+         subquery.ClearProjection();
+         subquery.ApplyProjection();
+         if (subquery.Limit == null
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs"
+index e0f9eb9..4f8956d 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindAggregateOperatorsQueryCosmosTest.cs"
+@@ -2267,27 +2267,22 @@ WHERE NOT(false)
+ """);
+             });
+ 
+-    public override async Task Contains_top_level(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception = await Assert.ThrowsAsync<CosmosException>(() => base.Contains_top_level(async));
+-
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
++    public override Task Contains_top_level(bool async)
++        => Fixture.NoSyncTest(
++            async, async a =>
++            {
++                await base.Contains_top_level(a);
+ 
+-            AssertSql(
+-                """
++                AssertSql(
++                    """
+ @p='ALFKI'
+ 
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c
+-    WHERE (c["id"] = @p))
++SELECT VALUE true
++FROM root c
++WHERE (c["id"] = @p)
++OFFSET 0 LIMIT 1
+ """);
+-        }
+-    }
++            });
+ 
+     public override async Task Contains_with_local_tuple_array_closure(bool async)
+     {
+@@ -2519,28 +2514,22 @@ WHERE ARRAY_CONTAINS(@ids, c["id"])
+ """);
+             });
+ 
+-    public override async Task Contains_over_entityType_with_null_should_rewrite_to_false(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception =
+-                await Assert.ThrowsAsync<CosmosException>(() => base.Contains_over_entityType_with_null_should_rewrite_to_false(async));
+-
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
++    public override Task Contains_over_entityType_with_null_should_rewrite_to_false(bool async)
++        => Fixture.NoSyncTest(
++            async, async a =>
++            {
++                await base.Contains_over_entityType_with_null_should_rewrite_to_false(a);
+ 
+-            AssertSql(
+-                """
++                AssertSql(
++                    """
+ @entity_equality_p_OrderID=null
+ 
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c
+-    WHERE (((c["$type"] = "Order") AND (c["CustomerID"] = "VINET")) AND (c["OrderID"] = @entity_equality_p_OrderID)))
++SELECT VALUE true
++FROM root c
++WHERE (((c["$type"] = "Order") AND (c["CustomerID"] = "VINET")) AND (c["OrderID"] = @entity_equality_p_OrderID))
++OFFSET 0 LIMIT 1
+ """);
+-        }
+-    }
++            });
+ 
+     public override async Task Contains_over_entityType_with_null_in_projection(bool async)
+     {
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
+index fda1771..8931677 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38297/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38297-treatment/test/EFCore.Cosmos.FunctionalTests/Query/NorthwindMiscellaneousQueryCosmosTest.cs"
+@@ -801,43 +801,34 @@ public override async Task Take_OrderBy_Count(bool async)
+         AssertSql();
+     }
+ 
+-    public override async Task Any_simple(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception = await Assert.ThrowsAsync<CosmosException>(() => base.Any_simple(async));
+-
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
++    public override Task Any_simple(bool async)
++        => Fixture.NoSyncTest(
++            async, async a =>
++            {
++                await base.Any_simple(a);
+ 
+-            AssertSql(
+-                """
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c)
++                AssertSql(
++                    """
++SELECT VALUE true
++FROM root c
++OFFSET 0 LIMIT 1
+ """);
+-        }
+-    }
++            });
+ 
+-    public override async Task Any_predicate(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception = await Assert.ThrowsAsync<CosmosException>(() => base.Any_predicate(async));
++    public override Task Any_predicate(bool async)
++        => Fixture.NoSyncTest(
++            async, async a =>
++            {
++                await base.Any_predicate(a);
+ 
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+-            AssertSql(
+-                """
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c
+-    WHERE STARTSWITH(c["ContactName"], "A"))
++                AssertSql(
++                    """
++SELECT VALUE true
++FROM root c
++WHERE STARTSWITH(c["ContactName"], "A")
++OFFSET 0 LIMIT 1
+ """);
+-        }
+-    }
++            });
+ 
+     public override async Task Any_nested_negated(bool async)
+     {
+@@ -1293,29 +1284,10 @@ public override Task Skip_Take_Distinct(bool async)
+             () => base.Skip_Take_Distinct(async),
+             CosmosStrings.LimitOffsetNotSupportedInSubqueries);
+ 
+-    public override async Task Skip_Take_Any(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception = await Assert.ThrowsAsync<CosmosException>(() => base.Skip_Take_Any(async));
+-
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+-
+-            AssertSql(
+-                """
+-@p='5'
+-@p1='10'
+-
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c
+-    ORDER BY c["ContactName"]
+-    OFFSET @p LIMIT @p1)
+-""");
+-        }
+-    }
++    public override Task Skip_Take_Any(bool async)
++        => AssertTranslationFailedWithDetails(
++            () => base.Skip_Take_Any(async),
++            CosmosStrings.LimitOffsetNotSupportedInSubqueries);
+ 
+     public override async Task Skip_Take_All(bool async)
+     {
+@@ -1506,24 +1478,19 @@ WHERE STARTSWITH(c["id"], "A")
+         }
+     }
+ 
+-    public override async Task OrderBy_ThenBy_Any(bool async)
+-    {
+-        // Always throws for sync.
+-        if (async)
+-        {
+-            // Top-level Any(), see #33854.
+-            var exception = await Assert.ThrowsAsync<CosmosException>(() => base.OrderBy_ThenBy_Any(async));
+-
+-            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
++    public override Task OrderBy_ThenBy_Any(bool async)
++        => Fixture.NoSyncTest(
++            async, async a =>
++            {
++                await base.OrderBy_ThenBy_Any(a);
+ 
+-            AssertSql(
+-                """
+-SELECT VALUE EXISTS (
+-    SELECT 1
+-    FROM root c)
++                AssertSql(
++                    """
++SELECT VALUE true
++FROM root c
++OFFSET 0 LIMIT 1
+ """);
+-        }
+-    }
++            });
+ 
+     public override async Task OrderBy_correlated_subquery1(bool async)
+     {

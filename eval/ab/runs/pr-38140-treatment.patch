@@ -1,0 +1,133 @@
+diff --git "a/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/SOLUTION.md" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/SOLUTION.md"
+new file mode 100644
+index 0000000..18472a2
+--- /dev/null
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/SOLUTION.md"
+@@ -0,0 +1,68 @@
++# Solution for GitHub Issue #38140
++
++## Root Cause
++
++When a query chains `GroupBy` → `Select` (projecting an entity via `g.OrderByDescending(...).FirstOrDefault()`) → `Where` (null-checking that entity) → `Select` (accessing scalar properties of that entity), EF Core throws:
++
++```
++KeyNotFoundException: The given key 'EmptyProjectionMember' was not present in the dictionary.
++```
++
++**Why it happens:**
++
++1. The first `Select` uses index-based binding (because it contains an entity-typed subquery).  The inner `ShapedQueryExpression` for `FirstOrDefault` is stored as-is in the outer select's `_clientProjections`, with its `_projectionMapping` containing `EmptyProjectionMember → StructuralTypeProjectionExpression`.
++
++2. The `Where(x => x.MaxOrder != null)` clause translates the null-check.  `TryRewriteEntityEquality` in `RelationalSqlTranslatingExpressionVisitor` converts the entity equality to PK property null-comparisons and calls `BindProperty` on the entity for each PK column.
++
++3. `BindProperty` in the `case { Subquery: { } subquery }` branch **destructively mutates** the subquery's `SelectExpression`:
++   - it calls `subSelectExpression.ReplaceProjection(...)`, which clears `_projectionMapping`, and
++   - it calls `subSelectExpression.ApplyProjection()`, which finalises the projection and clears `_clientProjections`.
++
++4. The second `Select(x => new { x.MaxOrder.OrderID, x.MaxOrder.OrderDate })` then calls `BindProperty` again for each property.  The same `SelectExpression` object is reused (it is the shared inner `ShapedQueryExpression` in `_clientProjections`), but now `_projectionMapping` is empty → `KeyNotFoundException`.
++
++## Fix
++
++In `RelationalSqlTranslatingExpressionVisitor.BindProperty` (Subquery case), **clone** the inner `SelectExpression` before calling `ReplaceProjection` / `ApplyProjection`.  Each property access gets its own independent copy of the subquery, so the original projection mapping is never destroyed.
++
++```csharp
++// Before (mutates the shared SelectExpression):
++var projection = (StructuralTypeProjectionExpression)subSelectExpression.GetProjection(projectionBindingExpression);
++var innerProjection = projection.BindProperty(property);
++subSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
++subSelectExpression.ApplyProjection();
++return new ScalarSubqueryExpression(subSelectExpression);
++
++// After (operates on a fresh clone each time):
++var clonedSubSelectExpression = subSelectExpression.Clone();
++var projection = (StructuralTypeProjectionExpression)clonedSubSelectExpression.GetProjection(projectionBindingExpression);
++var innerProjection = projection.BindProperty(property);
++clonedSubSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
++clonedSubSelectExpression.ApplyProjection();
++return new ScalarSubqueryExpression(clonedSubSelectExpression);
++```
++
++`SelectExpression.Clone()` already deep-copies `_projectionMapping`, tables, predicates, orderings, etc., so each resulting `ScalarSubqueryExpression` is self-contained and correctly references its own column expressions.
++
++## Files Changed
++
++**Product source:**
++- `src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs`
++  — Clone the subquery SelectExpression in `BindProperty` (Subquery case) before mutating it.
++
++**Tests:**
++- `test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs`
++  — Added `GroupBy_SelectFirst_then_Select_entity_properties` reproducing the exact issue pattern:
++    `GroupBy` → `Select` with `FirstOrDefault` entity → `Where` null-check → `Select` scalar properties.
++
++## Precedent Usage
++
++**Query 1:** `"GroupBy FirstOrDefault Select KeyNotFoundException EmptyProjectionMember"`
++- Result below threshold (score 0.408): PR #37552 — "Fix projecting complex type in ProjectionBinder". Related area (`RelationalProjectionBindingExpressionVisitor`), but a different problem (complex-type projection in binder). Not used directly; confirmed the general area of projection binding is where similar issues occur.
++
++**Query 2:** `"BindProperty subquery clone SelectExpression projection mapping"`
++- Result score 0.490: PR #37552 again. Not directly applicable (projection binder, not `BindProperty` subquery case). Not used.
++
++**Query 3:** `"GroupBy FirstOrDefault Select entity property KeyNotFoundException projection"`
++- Below threshold: PR #37747 — complex collection projection through subqueries. Not directly applicable. Ignored.
++
++No precedent directly guided the fix; the root cause was identified by code-level analysis of the mutation pattern in `BindProperty`.
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
+index 4242f97..817e08b 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/src/EFCore.Relational/Query/RelationalSqlTranslatingExpressionVisitor.cs"
+@@ -1350,13 +1350,19 @@ private SqlExpression BindProperty(StructuralTypeReferenceExpression typeReferen
+                 var entityShaper = (StructuralTypeShaperExpression)subquery.ShaperExpression;
+                 var subSelectExpression = (SelectExpression)subquery.QueryExpression;
+ 
++                // Clone the subquery's SelectExpression to avoid mutating the shared reference.
++                // Multiple property accesses on the same subquery entity (e.g. in a subsequent Select or a
++                // Where null-check) each call BindProperty, and each call replaces the projection and calls
++                // ApplyProjection, which clears _projectionMapping.  Without cloning, the second call cannot
++                // find EmptyProjectionMember and throws KeyNotFoundException (GitHub #38140).
++                var clonedSubSelectExpression = subSelectExpression.Clone();
+                 var projectionBindingExpression = (ProjectionBindingExpression)entityShaper.ValueBufferExpression;
+-                var projection = (StructuralTypeProjectionExpression)subSelectExpression.GetProjection(projectionBindingExpression);
++                var projection = (StructuralTypeProjectionExpression)clonedSubSelectExpression.GetProjection(projectionBindingExpression);
+                 var innerProjection = projection.BindProperty(property);
+-                subSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
+-                subSelectExpression.ApplyProjection();
++                clonedSubSelectExpression.ReplaceProjection(new List<Expression> { innerProjection });
++                clonedSubSelectExpression.ApplyProjection();
+ 
+-                return new ScalarSubqueryExpression(subSelectExpression);
++                return new ScalarSubqueryExpression(clonedSubSelectExpression);
+             }
+ 
+             default:
+diff --git "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs" "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs"
+index b029cb8..de8bbfd 100644
+--- "a/C:\\Work\\efcore-ab\\snapshots\\pr-38140/test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs"
++++ "b/C:\\Work\\efcore-ab\\runs\\pr-38140-treatment/test/EFCore.Specification.Tests/Query/NorthwindGroupByQueryTestBase.cs"
+@@ -2641,6 +2641,26 @@ public virtual Task GroupBy_select_grouping_composed_list_2(bool async)
+                 AssertCollection(e.List, a.List);
+             });
+ 
++    [Theory, MemberData(nameof(IsAsyncData))]
++    public virtual Task GroupBy_SelectFirst_then_Select_entity_properties(bool async)
++        => AssertQuery(
++            async,
++            ss => ss.Set<Order>()
++                .GroupBy(o => o.CustomerID)
++                .Select(g => new
++                {
++                    g.Key,
++                    MaxOrder = g.OrderByDescending(o => o.OrderID).FirstOrDefault()
++                })
++                .Where(x => x.MaxOrder != null)
++                .Select(x => new
++                {
++                    x.Key,
++                    x.MaxOrder!.OrderID,
++                    x.MaxOrder.OrderDate
++                }),
++            elementSorter: e => e.Key);
++
+     #endregion
+ 
+     #region GroupByEntityType

@@ -1,0 +1,28 @@
+ISSUE TITLE: Cosmos: support toplevel Any()
+
+ISSUE BODY:
+Test NorthwindMiscellaneousQueryCosmosTest.OrderBy_ThenBy_Any does the following:
+
+```c#
+public virtual Task OrderBy_ThenBy_Any(bool async)
+    => AssertAny(
+        async,
+        ss => ss.Set<Customer>().OrderBy(c => c.CustomerID).ThenBy(c => c.ContactName));
+```
+
+The top-level Any() means that we're meant to count the number of Customers in the database. We currently generate the following:
+
+```sql
+SELECT EXISTS (
+    SELECT 1
+    FROM root c
+    WHERE (c["Discriminator"] = "Customer")) AS c
+```
+
+While this works in relational, Cosmos does not support uncorrelated subqueries; in other words, EXISTS can only work if the subquery source is an array property on the root JSON object (the Customer), but not on the Customers themselves.
+
+We can probably make this work by translating to COUNT() > 0 instead. Or as @ajcvickers suggested, simply query the container with LIMIT 1 (and an empty projection). For example:
+
+```sql
+SELECT VALUE true FROM root c WHERE c.Id = 100 OFFSET 0 LIMIT 1
+```

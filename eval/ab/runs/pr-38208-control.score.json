@@ -1,0 +1,20 @@
+{
+  "pr": 38208,
+  "arm": "control",
+  "file_recall": 1.0,
+  "symbol_recall": 0.286,
+  "real_files": [
+    "src/EFCore.Analyzers/StringsUsageInRawQueriesDiagnosticAnalyzer.cs",
+    "test/EFCore.Analyzers.Tests/StringConcatenationInRawQueriesAnalyzerTests.cs"
+  ],
+  "touched_files": [
+    "src/EFCore.Analyzers/StringsUsageInRawQueriesDiagnosticAnalyzer.cs",
+    "test/EFCore.Analyzers.Tests/StringConcatenationInRawQueriesAnalyzerTests.cs"
+  ],
+  "files_hit": [
+    "src/EFCore.Analyzers/StringsUsageInRawQueriesDiagnosticAnalyzer.cs",
+    "test/EFCore.Analyzers.Tests/StringConcatenationInRawQueriesAnalyzerTests.cs"
+  ],
+  "real_symbols": 21,
+  "symbols_hit": 6
+}

@@ -1,0 +1,14 @@
+ISSUE TITLE: Query: Translate List.Exists
+
+ISSUE BODY:
+```C#
+        [ConditionalTheory]
+        [MemberData(nameof(IsAsyncData))]
+        public virtual Task Where_Join_Exists_Inequality(bool isAsync)
+        {
+            return AssertQuery<Customer>(
+                isAsync,
+                cs => cs.Where(c => c.CustomerID == "ALFKI" && c.Orders.Exists(o => o.OrderDate != new DateTime(2008, 10, 24))),
+                entryCount: 1);
+        }
+```
