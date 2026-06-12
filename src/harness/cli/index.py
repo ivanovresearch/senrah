@@ -6,7 +6,7 @@ Composition root for the index pipeline:
 - Resolves the configured project + repository to get a repository_id.
 - Calls Indexer.run(repository_id) via asyncio.run().
 
-There is no --reindex flag in Phase 1 (deferred to Phase 4 per CONTEXT.md).
+--reindex (Phase 4 / INDEX-03) rebuilds all embeddings from the raw store.
 
 Security:
 - T-03-01: OPENAI_API_KEY read from ENV only (via AsyncOpenAI / EnvSettings).
@@ -28,13 +28,25 @@ from harness.db.repos.repository import RepositoryRepo
 from harness.indexer.index import Indexer
 
 
-def index_cmd() -> None:
+def index_cmd(
+    reindex: bool = typer.Option(
+        False,
+        "--reindex",
+        help="Rebuild ALL embeddings from the raw pull_requests store using "
+        "the currently configured embedding model/version (INDEX-03). "
+        "Existing skills rows for each repository are deleted first; no "
+        "GitHub API calls are made.",
+    ),
+) -> None:
     """Embed ingested PRs into the skills table.
 
     Reads problem text (title + body) and solution text (diff) for each
     unindexed pull request, truncates to token limits (D-06/D-07), and writes
     both embeddings to the skills table with the configured model and version
     persisted per row (D-08).
+
+    With --reindex, all skills rows are rebuilt from the raw store — use this
+    after changing embed.model / embed.version (D-08 migration path).
 
     Config is read from harness.yaml (non-secret tunables).
     Secrets (OPENAI_API_KEY, DATABASE_URL) are read from ENV / .env.
@@ -109,11 +121,14 @@ def index_cmd() -> None:
 
             repository_id: int = repository.id  # type: ignore[assignment]
 
-            typer.echo(f"Indexing {repo_name} (model: {cfg.embed.model} / {cfg.embed.version})...")
+            typer.echo(
+                f"{'Reindexing' if reindex else 'Indexing'} {repo_name} "
+                f"(model: {cfg.embed.model} / {cfg.embed.version})..."
+            )
 
             try:
                 indexer = Indexer(conn, cfg.embed, api_key=env.openai_api_key)
-                count = asyncio.run(indexer.run(repository_id))
+                count = asyncio.run(indexer.run(repository_id, reindex=reindex))
                 typer.echo(f"Done: {count} PR(s) indexed for {repo_name}.")
             except Exception as exc:
                 typer.echo(

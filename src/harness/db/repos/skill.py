@@ -133,6 +133,33 @@ class SkillRepo:
             },
         )
 
+    def delete_for_repository(self, repository_id: int) -> int:
+        """Delete ALL skills rows for a repository's pull requests.
+
+        Used by `harness index --reindex` (INDEX-03): the conflict key on
+        skills is (pr_id, embedding_model, embedding_version), so re-embedding
+        under a NEW model/version would INSERT rows alongside the old ones and
+        the search path (which does not filter by version) would return
+        duplicates. A reindex therefore clears the repository's rows first,
+        then re-embeds everything from the raw pull_requests store.
+
+        Args:
+            repository_id: The repository whose skills rows are removed.
+
+        Returns:
+            Number of rows deleted.
+        """
+        cur = self._conn.execute(
+            """
+            DELETE FROM skills
+            USING pull_requests pr
+            WHERE skills.pr_id = pr.id
+              AND pr.repository_id = %(repository_id)s
+            """,
+            {"repository_id": repository_id},
+        )
+        return cur.rowcount
+
     # ------------------------------------------------------------------
     # search — read path for CLI + MCP Server (Plan 01-04)
     # ------------------------------------------------------------------

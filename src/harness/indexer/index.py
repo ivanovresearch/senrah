@@ -59,7 +59,7 @@ class Indexer:
         # falls back to the OPENAI_API_KEY env var via the SDK.
         self._api_key = api_key
 
-    async def run(self, repository_id: int) -> int:
+    async def run(self, repository_id: int, *, reindex: bool = False) -> int:
         """Index all unindexed PRs for a repository.
 
         Reads unindexed PRs, builds problem + solution texts, embeds in batches,
@@ -68,6 +68,11 @@ class Indexer:
 
         Args:
             repository_id: The repository to index.
+            reindex: When True (INDEX-03), delete the repository's existing
+                skills rows first and rebuild ALL embeddings from the raw
+                pull_requests store using the currently configured
+                model/version. No GitHub access — this module has no
+                connector dependency by design.
 
         Returns:
             Number of PRs successfully indexed.
@@ -76,7 +81,16 @@ class Indexer:
         skill_repo = SkillRepo(self._conn)
         embed_cfg = self._embed_cfg
 
+        if reindex:
+            deleted = skill_repo.delete_for_repository(repository_id)
+            logger.info(
+                "Reindex: deleted %d existing skills row(s) for repository_id=%d",
+                deleted,
+                repository_id,
+            )
+
         # Read all PRs that don't have a skills row yet
+        # (after a reindex delete, that is every PR in the repository).
         prs = pr_repo.unindexed_prs(repository_id)
 
         if not prs:
@@ -95,13 +109,17 @@ class Indexer:
         # in a single pass after the batch call.
         texts: list[str] = []
         for pr in prs:
+            # context labels make the truncation WARNING actionable (INDEX-04):
+            # the operator sees WHICH PR and WHICH field lost how much signal.
             problem_text = truncate_to_tokens(
                 build_problem_text(pr.title, pr.body or ""),
                 embed_cfg.problem_limit_tokens,
+                context=f"PR #{pr.number} problem",
             )
             solution_text = truncate_to_tokens(
                 pr.diff or "",
                 embed_cfg.diff_limit_tokens,
+                context=f"PR #{pr.number} diff",
             )
             texts.append(problem_text)
             texts.append(solution_text)

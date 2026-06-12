@@ -76,7 +76,7 @@ def _token_batches(texts: list[str]) -> list[list[str]]:
 # ---------------------------------------------------------------------------
 
 
-def truncate_to_tokens(text: str, limit: int) -> str:
+def truncate_to_tokens(text: str, limit: int, context: str = "") -> str:
     """Head-priority truncation: return first `limit` tokens of `text`.
 
     Truncation is measured in MODEL TOKENS via tiktoken cl100k_base — never
@@ -85,12 +85,15 @@ def truncate_to_tokens(text: str, limit: int) -> str:
 
     When truncation occurs, a WARNING is emitted with the original and
     truncated token counts plus the percentage dropped.  The warning contains
-    ONLY token counts — never the actual text content (T-03-04: information
+    ONLY token counts and the caller-supplied context label (e.g.
+    "PR #38140 diff" — INDEX-04: operators must see WHICH PR and WHICH field
+    lost signal) — never the actual text content (T-03-04: information
     disclosure mitigation; safe for Phase 2 MCP stdio cleanliness).
 
     Args:
         text: Input text (may be arbitrarily long).
         limit: Maximum number of tokens to keep.
+        context: Optional label identifying the text (PR number + field).
 
     Returns:
         The original text if token count ≤ limit; otherwise the decoded
@@ -105,7 +108,8 @@ def truncate_to_tokens(text: str, limit: int) -> str:
     # Compute ratio for the log message (T-03-04: counts only, no text)
     ratio_dropped = (original_count - limit) / original_count
     logger.warning(
-        "Text truncated: %d → %d tokens (%.0f%% dropped)",
+        "Text truncated%s: %d → %d tokens (%.0f%% dropped)",
+        f" [{context}]" if context else "",
         original_count,
         limit,
         ratio_dropped * 100,
