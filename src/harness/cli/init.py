@@ -34,10 +34,24 @@ from harness.config import (
 from harness.connectors.github import GitHubConnector
 
 
+# Repository types with an implemented connector. Validated at prompt time:
+# live UAT (2026-06-12) showed init silently stored an arbitrary type (and a
+# UTF-8 BOM pasted with the input), producing a config entry no connector
+# can serve.
+_KNOWN_REPO_TYPES = ("github",)
+
+
+def _clean(value: str) -> str:
+    """Normalize prompt input: strip whitespace and any UTF-8 BOM chars."""
+    return value.replace("\ufeff", "").strip()
+
+
 def _prompt_scope() -> Scope:
     """Prompt for an ingest scope (D-A3): mode + value coerced per mode."""
-    mode = typer.prompt(
-        "Scope mode (all / last_n / since_date / period)", default="last_n"
+    mode = _clean(
+        typer.prompt(
+            "Scope mode (all / last_n / since_date / period)", default="last_n"
+        )
     )
     if mode == "all":
         return Scope(mode="all", value=None)
@@ -47,9 +61,11 @@ def _prompt_scope() -> Scope:
             value=typer.prompt("Number of newest merged PRs", type=int, default=100),
         )
     if mode == "since_date":
-        return Scope(mode="since_date", value=typer.prompt("Since date (YYYY-MM-DD)"))
+        return Scope(
+            mode="since_date", value=_clean(typer.prompt("Since date (YYYY-MM-DD)"))
+        )
     if mode == "period":
-        return Scope(mode="period", value=typer.prompt("Period (e.g. 90d)"))
+        return Scope(mode="period", value=_clean(typer.prompt("Period (e.g. 90d)")))
     typer.echo(
         f"ERROR: unknown scope mode {mode!r} (use all/last_n/since_date/period).",
         err=True,
@@ -84,10 +100,17 @@ def init_cmd() -> None:
             typer.echo(f"ERROR: Invalid harness.yaml: {exc}", err=True)
             raise typer.Exit(code=1)
 
-    project_name = existing_project or typer.prompt("Project name")
+    project_name = existing_project or _clean(typer.prompt("Project name"))
 
-    repo_type = typer.prompt("Repository type", default="github")
-    repo_name = typer.prompt("Repository (owner/repo)")
+    repo_type = _clean(typer.prompt("Repository type", default="github"))
+    if repo_type not in _KNOWN_REPO_TYPES:
+        typer.echo(
+            f"ERROR: unknown repository type {repo_type!r} "
+            f"(supported: {', '.join(_KNOWN_REPO_TYPES)}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    repo_name = _clean(typer.prompt("Repository (owner/repo)"))
     scope = _prompt_scope()
 
     # Validate the credential via a live test-read on the entered repo (OPS-01,
