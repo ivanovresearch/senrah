@@ -12,6 +12,10 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Build artifacts (produced by `python -m build`; published from CI, never committed)
+dist/
+build/
+
 # Project-local config: real per-user tunables stay local (copy from
 # senrah.yaml.example). Keeps "temporary" tokens from ever being tracked.
 senrah.yaml

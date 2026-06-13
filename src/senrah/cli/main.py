@@ -17,6 +17,8 @@ import sys
 
 import typer
 
+from senrah import __version__
+
 # psycopg3 async cannot run on Windows' default ProactorEventLoop. The CLI uses
 # an async connection pool (e.g. `senrah search`), so select the
 # SelectorEventLoop on Windows before any asyncio.run() in a subcommand.
@@ -36,6 +38,27 @@ app = typer.Typer(
     help="Senrah — semantic PR search for AI coding agents.",
     no_args_is_help=True,
 )
+
+
+def _version_callback(value: bool) -> None:
+    """Print the version and exit (eager — runs before subcommand dispatch)."""
+    if value:
+        typer.echo(f"senrah {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the senrah version and exit.",
+    ),
+) -> None:
+    """Senrah — semantic PR search for AI coding agents."""
+
 
 # Init subcommand (Plan 03-04) — bootstrap/extend senrah.yaml with validation
 app.command("init")(init_cmd)

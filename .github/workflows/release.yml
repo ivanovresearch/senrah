@@ -1,0 +1,52 @@
+name: Release
+
+# Tag-only trigger: a maintainer pushing `vX.Y.Z` cuts a release. Never runs on
+# pull_request / pull_request_target — untrusted code cannot trigger a publish.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Default least-privilege; the publish job opts into id-token below.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - name: Build sdist + wheel
+        run: python -m build
+      - name: Validate distributions
+        run: python -m twine check dist/*
+      - name: Smoke-install wheel into a fresh venv
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/senrah --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Bound to a protected GitHub Environment; OIDC token is scoped to this job.
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to TestPyPI (Trusted Publishing — no stored token)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
