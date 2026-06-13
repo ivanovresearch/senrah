@@ -16,6 +16,7 @@ schema call pg_dsn_migrated (which runs migrations once per session).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import random
 import subprocess
@@ -103,10 +104,18 @@ def fake_embedder():
     Uses a seeded RNG keyed on the input text so the same text always produces
     the same vector (deterministic across test runs), with no OpenAI API calls.
     The vectors are normalised to unit length (appropriate for cosine similarity).
+
+    The seed comes from a SHA-256 of the text, NOT the builtin ``hash()``:
+    ``hash(str)`` is salted by ``PYTHONHASHSEED`` (randomised per process), so
+    ``hash()`` would make these vectors differ between processes — breaking the
+    cross-run/cross-platform determinism this fixture promises (it caused a
+    CI-only E2E search failure: arbitrary-query vectors came out near-orthogonal
+    with a negative composite score and were filtered below threshold).
     """
 
     def _embed(text: str) -> list[float]:
-        rng = random.Random(hash(text) & 0xFFFF_FFFF)
+        seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+        rng = random.Random(seed)
         raw = [rng.gauss(0, 1) for _ in range(1536)]
         # Normalise to unit length for cosine similarity
         magnitude = sum(x * x for x in raw) ** 0.5

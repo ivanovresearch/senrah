@@ -242,12 +242,16 @@ class TestEndToEndSearch:
                     problem_weight=0.6,
                     solution_weight=0.4,
                 )
-                # fetch the top candidate with no threshold for the hint
+                # fetch the top candidate with no threshold for the hint.
+                # composite ∈ [-1, 1]; an arbitrary query vector is near-orthogonal
+                # to the seeded PRs, so its composite can be slightly negative —
+                # use a floor below -1 so the hint candidate is always returned
+                # (threshold=0.0 would drop a negative-composite top candidate).
                 results_all = await repo.search(
                     query_vec=query_vec,
                     top_n=1,
                     oversample_factor=5,
-                    score_threshold=0.0,
+                    score_threshold=-2.0,
                     problem_weight=0.6,
                     solution_weight=0.4,
                 )
@@ -297,11 +301,16 @@ class TestEndToEndSearch:
             ) as async_conn:
                 await register_vector_async(async_conn)
                 repo = SkillRepo(async_conn)
+                # This test checks SearchResult field completeness, not ranking
+                # magnitude. An arbitrary query vector is near-orthogonal to the
+                # seeded PRs, so composite ∈ [-1, 1] can be negative; use a floor
+                # below -1 to admit candidates regardless of sign (threshold=0.0
+                # dropped them on the CI runner's RNG seed → empty result).
                 return await repo.search(
                     query_vec=query_vec,
                     top_n=3,
                     oversample_factor=5,
-                    score_threshold=0.0,
+                    score_threshold=-2.0,
                     problem_weight=0.6,
                     solution_weight=0.4,
                 )
