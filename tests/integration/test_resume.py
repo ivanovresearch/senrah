@@ -8,7 +8,7 @@ SC#4 guarantee: An interrupted run resumes from the stored cursor with no PR
 re-fetched and none skipped.
 
 Manual fallback (documented in 03-VALIDATION.md until Docker blocker is cleared):
-  Run `harness ingest --scope last_n 200`, Ctrl-C mid-run, re-run, confirm
+  Run `senrah ingest --scope last_n 200`, Ctrl-C mid-run, re-run, confirm
   no duplicate/skip in logs.
 
 Covers:
@@ -55,9 +55,9 @@ def conn(pg_dsn_migrated: str):
 @pytest.fixture
 def project_and_repo(conn):
     """Create a project and repository row; return (project_id, repo_id)."""
-    from harness.db.repos.project import ProjectRepo
-    from harness.db.repos.repository import RepositoryRepo
-    from harness.db.models import Project, Repository
+    from senrah.db.repos.project import ProjectRepo
+    from senrah.db.repos.repository import RepositoryRepo
+    from senrah.db.models import Project, Repository
 
     project_repo = ProjectRepo(conn)
     repo_repo = RepositoryRepo(conn)
@@ -84,9 +84,9 @@ class TestResumeFromCursor:
 
     def test_cursor_stored_after_first_pr(self, conn, project_and_repo) -> None:
         """After ingesting one PR, the cursor is stored in the DB."""
-        from harness.db.repos.repository import RepositoryRepo
-        from harness.db.repos.pr import PRRepo
-        from harness.db.models import PullRequest
+        from senrah.db.repos.repository import RepositoryRepo
+        from senrah.db.repos.pr import PRRepo
+        from senrah.db.models import PullRequest
 
         project_id, repo_id = project_and_repo
         merged_at = datetime(2024, 3, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -104,7 +104,7 @@ class TestResumeFromCursor:
 
     def test_second_run_starts_after_cursor(self, conn, project_and_repo) -> None:
         """A second run with the cursor set skips already-processed PRs."""
-        from harness.db.repos.repository import RepositoryRepo
+        from senrah.db.repos.repository import RepositoryRepo
 
         project_id, repo_id = project_and_repo
         cursor_merged_at = datetime(2024, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -121,7 +121,7 @@ class TestResumeFromCursor:
 
     def test_advance_cursor_is_monotonic(self, conn, project_and_repo) -> None:
         """advance_cursor uses GREATEST — older merged_at does not move cursor backward."""
-        from harness.db.repos.repository import RepositoryRepo
+        from senrah.db.repos.repository import RepositoryRepo
 
         project_id, repo_id = project_and_repo
         newer = datetime(2024, 6, 1, tzinfo=timezone.utc)
@@ -191,11 +191,11 @@ class TestResumeDataLossBugC:
     def test_resume_skips_low_merged_late_updated_tail(self, ac_conn) -> None:
         from unittest.mock import MagicMock, patch
 
-        from harness.connectors.base import RateLimitStatus
-        from harness.db.models import Project, Repository
-        from harness.db.repos.project import ProjectRepo
-        from harness.db.repos.repository import RepositoryRepo
-        from harness.ingester.ingest import Ingester
+        from senrah.connectors.base import RateLimitStatus
+        from senrah.db.models import Project, Repository
+        from senrah.db.repos.project import ProjectRepo
+        from senrah.db.repos.repository import RepositoryRepo
+        from senrah.ingester.ingest import Ingester
 
         UTC = timezone.utc
         C0 = datetime(2024, 5, 1, tzinfo=UTC)  # prior steady-state cursor
@@ -260,8 +260,8 @@ class TestResumeDataLossBugC:
             ).fetchall()
             return sorted(row[0] for row in rows)
 
-        with patch("harness.connectors.github.Github") as MockGithub:
-            from harness.connectors.github import GitHubConnector
+        with patch("senrah.connectors.github.Github") as MockGithub:
+            from senrah.connectors.github import GitHubConnector
 
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = window
@@ -332,11 +332,11 @@ class TestResumeRecoversErroredPR:
     def test_errored_pr_is_reingested_on_resume(self, ac_conn) -> None:
         from unittest.mock import MagicMock, patch
 
-        from harness.connectors.base import RateLimitStatus
-        from harness.db.models import Project, Repository
-        from harness.db.repos.project import ProjectRepo
-        from harness.db.repos.repository import RepositoryRepo
-        from harness.ingester.ingest import Ingester
+        from senrah.connectors.base import RateLimitStatus
+        from senrah.db.models import Project, Repository
+        from senrah.db.repos.project import ProjectRepo
+        from senrah.db.repos.repository import RepositoryRepo
+        from senrah.ingester.ingest import Ingester
 
         UTC = timezone.utc
 
@@ -391,8 +391,8 @@ class TestResumeRecoversErroredPR:
             ).fetchall()
             return sorted(row[0] for row in rows)
 
-        with patch("harness.connectors.github.Github") as MockGithub:
-            from harness.connectors.github import GitHubConnector
+        with patch("senrah.connectors.github.Github") as MockGithub:
+            from senrah.connectors.github import GitHubConnector
 
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = window

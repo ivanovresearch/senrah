@@ -1,5 +1,5 @@
 """
-tests/unit/test_embedder.py — Unit tests for harness.indexer.embedder.
+tests/unit/test_embedder.py — Unit tests for senrah.indexer.embedder.
 
 Covers INDEX-01 and INDEX-02 truncation boundaries with NO OpenAI calls.
 Token counts are measured with tiktoken, proving tokens-not-characters (D-06).
@@ -66,20 +66,20 @@ class TestBuildProblemText:
     """build_problem_text(title, body) -> 'title\\n\\nbody'.strip()"""
 
     def test_title_and_body_joined(self) -> None:
-        from harness.indexer.embedder import build_problem_text
+        from senrah.indexer.embedder import build_problem_text
 
         result = build_problem_text("Fix cursor bug", "Resolves issue #42")
         assert result == "Fix cursor bug\n\nResolves issue #42"
 
     def test_empty_body_stripped(self) -> None:
-        from harness.indexer.embedder import build_problem_text
+        from senrah.indexer.embedder import build_problem_text
 
         result = build_problem_text("Fix cursor bug", "")
         # "title\n\n".strip() -> "title"
         assert result == "Fix cursor bug"
 
     def test_whitespace_stripped(self) -> None:
-        from harness.indexer.embedder import build_problem_text
+        from senrah.indexer.embedder import build_problem_text
 
         result = build_problem_text("  title  ", "  body  ")
         # The strip() call removes leading/trailing whitespace from the
@@ -87,7 +87,7 @@ class TestBuildProblemText:
         assert result == "title  \n\n  body"
 
     def test_both_empty_returns_empty(self) -> None:
-        from harness.indexer.embedder import build_problem_text
+        from senrah.indexer.embedder import build_problem_text
 
         result = build_problem_text("", "")
         assert result == ""
@@ -102,7 +102,7 @@ class TestProblemTruncation:
 
     def test_problem_truncation(self) -> None:
         """Over-limit problem text is truncated to exactly PROBLEM_LIMIT tokens."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_text = make_long_text(PROBLEM_LIMIT)
         assert token_count(long_text) > PROBLEM_LIMIT
@@ -121,7 +121,7 @@ class TestProblemTruncation:
         This test proves D-06: if truncation were character-based, the token
         count of the result would likely not match the token limit.
         """
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_text = make_long_text(PROBLEM_LIMIT)
         truncated = truncate_to_tokens(long_text, PROBLEM_LIMIT)
@@ -136,7 +136,7 @@ class TestProblemTruncation:
 
     def test_sub_limit_problem_text_unchanged(self) -> None:
         """Text under PROBLEM_LIMIT is returned exactly unchanged."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         short_text = "Fix null pointer exception in async resolver"
         assert token_count(short_text) < PROBLEM_LIMIT
@@ -146,7 +146,7 @@ class TestProblemTruncation:
 
     def test_exactly_at_limit_unchanged(self) -> None:
         """Text at exactly the token limit is returned unchanged (no truncation)."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         # Build a text of exactly PROBLEM_LIMIT tokens
         # "hello" is 1 token in cl100k_base
@@ -169,7 +169,7 @@ class TestDiffTruncation:
 
     def test_diff_truncation(self) -> None:
         """Over-limit diff text is truncated to exactly DIFF_LIMIT tokens."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_diff = make_long_text(DIFF_LIMIT)
         assert token_count(long_diff) > DIFF_LIMIT
@@ -183,7 +183,7 @@ class TestDiffTruncation:
 
     def test_sub_limit_diff_unchanged(self) -> None:
         """Diff under DIFF_LIMIT is returned exactly unchanged."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         short_diff = "- old_line()\n+ new_line()\n"
         assert token_count(short_diff) < DIFF_LIMIT
@@ -193,7 +193,7 @@ class TestDiffTruncation:
 
     def test_diff_truncation_via_tiktoken_not_chars(self) -> None:
         """Diff truncation is token-based (D-06): result re-encodes to ≤ limit."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_diff = make_long_text(DIFF_LIMIT)
         truncated = truncate_to_tokens(long_diff, DIFF_LIMIT)
@@ -215,11 +215,11 @@ class TestTruncationWarningLogged:
 
     def test_truncation_warning_emitted(self, caplog: pytest.LogCaptureFixture) -> None:
         """Over-limit input triggers a logged warning."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_text = make_long_text(PROBLEM_LIMIT)
 
-        with caplog.at_level(logging.WARNING, logger="harness.indexer.embedder"):
+        with caplog.at_level(logging.WARNING, logger="senrah.indexer.embedder"):
             truncate_to_tokens(long_text, PROBLEM_LIMIT)
 
         assert len(caplog.records) >= 1
@@ -228,23 +228,23 @@ class TestTruncationWarningLogged:
 
     def test_no_warning_for_sub_limit_text(self, caplog: pytest.LogCaptureFixture) -> None:
         """Sub-limit input does NOT emit a warning."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         short_text = "Fix null pointer in resolver"
 
-        with caplog.at_level(logging.WARNING, logger="harness.indexer.embedder"):
+        with caplog.at_level(logging.WARNING, logger="senrah.indexer.embedder"):
             truncate_to_tokens(short_text, PROBLEM_LIMIT)
 
         assert len(caplog.records) == 0
 
     def test_warning_contains_token_counts(self, caplog: pytest.LogCaptureFixture) -> None:
         """Warning message contains original and truncated token counts (T-03-04)."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         long_text = make_long_text(PROBLEM_LIMIT)
         original_count = token_count(long_text)
 
-        with caplog.at_level(logging.WARNING, logger="harness.indexer.embedder"):
+        with caplog.at_level(logging.WARNING, logger="senrah.indexer.embedder"):
             truncate_to_tokens(long_text, PROBLEM_LIMIT)
 
         assert len(caplog.records) >= 1
@@ -263,12 +263,12 @@ class TestTruncationWarningLogged:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Warning message must NOT include the actual text content (T-03-04)."""
-        from harness.indexer.embedder import truncate_to_tokens
+        from senrah.indexer.embedder import truncate_to_tokens
 
         # Distinctive token in the text — should NOT appear in the warning
         long_text = "SENTINEL_VALUE " + "hello " * (PROBLEM_LIMIT + 100)
 
-        with caplog.at_level(logging.WARNING, logger="harness.indexer.embedder"):
+        with caplog.at_level(logging.WARNING, logger="senrah.indexer.embedder"):
             truncate_to_tokens(long_text, PROBLEM_LIMIT)
 
         if caplog.records:
@@ -288,7 +288,7 @@ class TestEmbedderModuleConstraints:
     def test_cl100k_base_used(self) -> None:
         """embedder.py must use cl100k_base (Pitfall 3 / A4)."""
         import inspect
-        from harness.indexer import embedder
+        from senrah.indexer import embedder
 
         source = inspect.getsource(embedder)
         assert "cl100k_base" in source, (
@@ -298,7 +298,7 @@ class TestEmbedderModuleConstraints:
     def test_no_sql_in_embedder(self) -> None:
         """embedder.py must contain no SQL (SELECT/INSERT/<=>) — boundary check."""
         import inspect
-        from harness.indexer import embedder
+        from senrah.indexer import embedder
 
         source = inspect.getsource(embedder)
         forbidden = ["SELECT", "INSERT", "<=>"]

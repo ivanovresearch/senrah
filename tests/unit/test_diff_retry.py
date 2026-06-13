@@ -21,7 +21,7 @@ import pytest
 import respx
 import httpx
 
-from harness.connectors.github import GitHubConnector
+from senrah.connectors.github import GitHubConnector
 
 
 FAKE_TOKEN = "ghp_fake_diff_retry_token_12345678901"
@@ -40,7 +40,7 @@ class TestDiffRetryRetryAfter:
             httpx.Response(200, text=FAKE_DIFF),
         ])
 
-        with patch("harness.connectors.github.Github"):
+        with patch("senrah.connectors.github.Github"):
             conn = GitHubConnector(FAKE_TOKEN)
             # _fetch_diff uses _diff_retry — if it retries it should succeed
             # We call list_merged_prs which internally calls _fetch_diff
@@ -61,7 +61,7 @@ class TestDiffRetryRetryAfter:
             httpx.Response(200, text=FAKE_DIFF),
         ])
 
-        with patch("harness.connectors.github.Github"):
+        with patch("senrah.connectors.github.Github"):
             conn = GitHubConnector(FAKE_TOKEN)
             try:
                 result = conn._fetch_diff(DIFF_URL)
@@ -81,7 +81,7 @@ class TestDiffRetryRetryAfter:
             httpx.Response(200, text=FAKE_DIFF),
         ])
 
-        with patch("harness.connectors.github.Github"):
+        with patch("senrah.connectors.github.Github"):
             conn = GitHubConnector(FAKE_TOKEN)
             try:
                 result = conn._fetch_diff(DIFF_URL)
@@ -97,7 +97,7 @@ class TestDiffRetryRetryAfter:
             return_value=httpx.Response(403, text="rate limit", headers={"Retry-After": "0"})
         )
 
-        with patch("harness.connectors.github.Github"):
+        with patch("senrah.connectors.github.Github"):
             conn = GitHubConnector(FAKE_TOKEN)
             try:
                 with pytest.raises((httpx.HTTPStatusError, Exception)):

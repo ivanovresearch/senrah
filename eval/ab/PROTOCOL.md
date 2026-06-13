@@ -1,10 +1,10 @@
-# A/B Protocol — Harness uplift on real efcore tasks
+# A/B Protocol — Senrah uplift on real efcore tasks
 
 **Frozen 2026-06-11, BEFORE any run.** Changes after the first run invalidate the result.
 
 ## Question
 
-Does an agent solve a real task closer to the real merged fix WITH Harness
+Does an agent solve a real task closer to the real merged fix WITH Senrah
 precedent retrieval than without? Weights are NOT touched (current config:
 problem_weight 0.7 / solution_weight 0.3); this measures product uplift, not
 retrieval tuning. The A/B result MUST NOT be used to pick weights.
@@ -24,7 +24,7 @@ bodies). Task records: `eval/ab/tasks/task-<pr>.json`.
 `2026-05-20 00:35:09+00`. ALL skills rows with merged_at >= cutoff are removed
 from the searchable index (42 PRs: the 12 tasks + 30 newer neighbours,
 including any backports of held-out fixes). Searchable corpus = 264 PRs.
-Reversible: `harness index` re-embeds after the experiment.
+Reversible: `senrah index` re-embeds after the experiment.
 
 ## Workspace per task
 
@@ -39,11 +39,11 @@ Same agent type, same prompt template, same budget; building/running efcore
 is forbidden for BOTH arms (cost parity).
 
 - **control:** issue title+body + snapshot. "Implement the fix, produce a patch."
-- **treatment:** same + access to `harness search "<query>"` (Bash CLI);
+- **treatment:** same + access to `senrah search "<query>"` (Bash CLI);
   queries formulated by the agent itself.
 
 Deviation #1 (recorded): spawned subagents cannot mount the MCP server;
-treatment uses the `harness search` CLI. Output content mirrors search_prs_v1
+treatment uses the `senrah search` CLI. Output content mirrors search_prs_v1
 (D-12). **Confidence signal verified present in CLI** (per-result
 `score: 0.XXX`, `[BELOW THRESHOLD score=…]` + HINT on empty pass — D-11), so
 treatment is NOT a weakened mode; only the debug-gated score components are
@@ -61,10 +61,10 @@ absent, as they are in default MCP output too.
    red flag about the judge, not a win.** (c) is calibrated against a human
    read on 3–4 tasks before being cited.
 3. **Categorical analysis is the compensation for outcome-metric blindness,
-   not a supplement.** file-recall under-credits Harness where control
+   not a supplement.** file-recall under-credits Senrah where control
    guesses files anyway; the unique value (codebase conventions, category 2)
    shows in transcripts, not numbers. Small (a)/(b) delta + strong category-2
-   evidence reads as "Harness helps in ways the metric can't see" — recorded
+   evidence reads as "Senrah helps in ways the metric can't see" — recorded
    as such, not as "no effect".
 
 Rubric for (c): 0 = not a fix / wrong direction; 1 = plausible attempt,
@@ -81,7 +81,7 @@ the real fix.
 5. nothing useful found.
 
 Report includes 2–3 concrete examples per occurring category (task, what
-Harness returned, what each arm did).
+Senrah returned, what each arm did).
 
 ## Headline
 

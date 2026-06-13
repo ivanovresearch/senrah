@@ -12,8 +12,8 @@ from __future__ import annotations
 import json
 import logging
 
-from harness.mcp.status import McpStatusWriter, read_status
-from harness.search_log import log_search, search_log_enabled
+from senrah.mcp.status import McpStatusWriter, read_status
+from senrah.search_log import log_search, search_log_enabled
 
 
 class TestSearchLog:

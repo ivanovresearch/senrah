@@ -12,7 +12,7 @@ Tests cover:
 - render_text_response: ok text has confidence signal; no-matches text frames weak lead
 """
 # Note: formatting tests (TestFmtFilesMcp, TestFmtDiffExcerptMcp, TestBuildEnvelope,
-# TestRenderTextResponse) use imports from harness.mcp.formatting which is implemented
+# TestRenderTextResponse) use imports from senrah.mcp.formatting which is implemented
 # in Task 3 of this plan.
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from datetime import datetime
 
 import pytest
 
-from harness.mcp.schema import (
+from senrah.mcp.schema import (
     BelowThresholdV1,
     PRResultV1,
     SearchResponseV1,
@@ -249,7 +249,7 @@ class TestSearchResponseV1:
 # Formatting helpers — fmt_files_mcp, fmt_diff_excerpt_mcp
 # ---------------------------------------------------------------------------
 
-from harness.mcp.formatting import (  # noqa: E402 — after schema imports
+from senrah.mcp.formatting import (  # noqa: E402 — after schema imports
     build_envelope,
     fmt_diff_excerpt_mcp,
     fmt_files_mcp,
@@ -333,7 +333,7 @@ class TestFmtDiffExcerptMcp:
 
 from datetime import datetime  # noqa: E402
 
-from harness.db.repos.skill import SearchResult  # noqa: E402
+from senrah.db.repos.skill import SearchResult  # noqa: E402
 
 
 def _make_search_result(

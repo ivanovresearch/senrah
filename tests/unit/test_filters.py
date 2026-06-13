@@ -1,5 +1,5 @@
 """
-Unit tests for harness.ingester.filters — is_bot / is_giant pure predicates.
+Unit tests for senrah.ingester.filters — is_bot / is_giant pure predicates.
 
 Covers INGEST-03:
 - is_bot: author ending in [bot] suffix or present in stop-list
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.ingester.filters import is_bot, is_giant
+from senrah.ingester.filters import is_bot, is_giant
 
 
 class TestIsBot:

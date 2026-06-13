@@ -1,9 +1,9 @@
 """
-Unit tests for `harness init` (OPS-01).
+Unit tests for `senrah init` (OPS-01).
 
 Covers:
 - Accept path: a valid credential → upsert_repo_entry writes the repo; the
-  written harness.yaml passes load_yaml_config + _check_for_secrets.
+  written senrah.yaml passes load_yaml_config + _check_for_secrets.
 - Reject path: validate_credentials failure → typer.Exit(1) and NO write.
 - The token is never echoed to stdout/stderr.
 """
@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import typer
 
-from harness.cli.init import init_cmd
-from harness.config import _check_for_secrets, load_yaml_config
+from senrah.cli.init import init_cmd
+from senrah.config import _check_for_secrets, load_yaml_config
 
 FAKE_TOKEN = "ghp_fake_init_token_DO_NOT_LOG_9999"
 
@@ -42,8 +42,8 @@ def env(monkeypatch):
 
 class TestInitCmd:
     def test_accept_writes_entry(self, tmp_path, env, monkeypatch, capsys) -> None:
-        monkeypatch.chdir(tmp_path)  # find_config_file → None → cwd/harness.yaml
-        cfg_path = tmp_path / "harness.yaml"
+        monkeypatch.chdir(tmp_path)  # find_config_file → None → cwd/senrah.yaml
+        cfg_path = tmp_path / "senrah.yaml"
         # Prompts: project, repo type (default github), repo, scope mode, last_n value
         prompts = ["myproj", ..., "owner/repo", "last_n", 25]
 
@@ -51,7 +51,7 @@ class TestInitCmd:
         connector.validate_credentials.return_value = None  # accept
 
         with patch(
-            "harness.cli.init.GitHubConnector", return_value=connector
+            "senrah.cli.init.GitHubConnector", return_value=connector
         ), patch("typer.prompt", side_effect=_prompt_sequence(prompts)):
             init_cmd()
 
@@ -73,7 +73,7 @@ class TestInitCmd:
 
     def test_reject_does_not_write(self, tmp_path, env, monkeypatch, capsys) -> None:
         monkeypatch.chdir(tmp_path)
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         prompts = ["myproj", ..., "owner/repo", "all", ...]
 
         connector = MagicMock()
@@ -82,13 +82,13 @@ class TestInitCmd:
         )
 
         with patch(
-            "harness.cli.init.GitHubConnector", return_value=connector
+            "senrah.cli.init.GitHubConnector", return_value=connector
         ), patch("typer.prompt", side_effect=_prompt_sequence(prompts)):
             with pytest.raises(typer.Exit) as exc_info:
                 init_cmd()
 
         assert exc_info.value.exit_code == 1
-        assert not cfg_path.exists(), "no harness.yaml must be written on reject"
+        assert not cfg_path.exists(), "no senrah.yaml must be written on reject"
         out = capsys.readouterr()
         assert FAKE_TOKEN not in out.out and FAKE_TOKEN not in out.err
         assert "REJECTED" in out.err

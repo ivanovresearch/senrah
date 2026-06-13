@@ -19,7 +19,7 @@ import sys
 
 import pytest
 
-from harness.connectors.base import RawPR, RateLimitStatus
+from senrah.connectors.base import RawPR, RateLimitStatus
 
 
 FAKE_DIFF = "diff --git a/foo.py b/foo.py\n+new\n"
@@ -47,7 +47,7 @@ class TestPerPRErrorIsolation:
     def test_error_on_one_pr_does_not_abort_run(self) -> None:
         """A failure on PR #2 must not prevent PR #3 from being processed."""
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable")
 
@@ -76,10 +76,10 @@ class TestPerPRErrorIsolation:
                 raise RuntimeError("Simulated DB error for PR #2")
             return pr.number
 
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.side_effect = mock_pr_upsert
             MockPRRepo.return_value.exists.return_value = False  # probe: not yet in DB
-            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+            with patch("senrah.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
                 mock_repo_instance.get_op_state.return_value = None
@@ -104,7 +104,7 @@ class TestPerPRErrorIsolation:
     def test_error_logged_to_stderr(self) -> None:
         """Per-PR errors are logged to stderr (not stdout)."""
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable")
 
@@ -121,10 +121,10 @@ class TestPerPRErrorIsolation:
         mock_conn = MagicMock()
         ingester = Ingester(mock_conn)
 
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.side_effect = RuntimeError("forced error")
             MockPRRepo.return_value.exists.return_value = False  # probe: not yet in DB
-            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+            with patch("senrah.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
                 mock_repo_instance.get_op_state.return_value = None

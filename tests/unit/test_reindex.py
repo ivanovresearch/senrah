@@ -17,10 +17,10 @@ import asyncio
 import logging
 from unittest.mock import MagicMock, patch
 
-from harness.config import EmbedConfig
-from harness.db.models import PullRequest
-from harness.indexer.embedder import truncate_to_tokens
-from harness.indexer.index import Indexer
+from senrah.config import EmbedConfig
+from senrah.db.models import PullRequest
+from senrah.indexer.embedder import truncate_to_tokens
+from senrah.indexer.index import Indexer
 
 
 def _pr(pr_id: int, number: int, diff: str = "diff --git a/f b/f\n+x\n") -> PullRequest:
@@ -45,10 +45,10 @@ class TestReindex:
         cfg = EmbedConfig(model="text-embedding-3-small", version="v2")
         indexer = Indexer(MagicMock(), cfg)
 
-        with patch("harness.indexer.index.PRRepo") as MockPRRepo, patch(
-            "harness.indexer.index.SkillRepo"
+        with patch("senrah.indexer.index.PRRepo") as MockPRRepo, patch(
+            "senrah.indexer.index.SkillRepo"
         ) as MockSkillRepo, patch(
-            "harness.indexer.index.embed_texts", new=_fake_embed_texts
+            "senrah.indexer.index.embed_texts", new=_fake_embed_texts
         ):
             MockSkillRepo.return_value.delete_for_repository.return_value = 3
             MockPRRepo.return_value.unindexed_prs.return_value = [
@@ -69,10 +69,10 @@ class TestReindex:
         cfg = EmbedConfig(model="text-embedding-3-small", version="v1")
         indexer = Indexer(MagicMock(), cfg)
 
-        with patch("harness.indexer.index.PRRepo") as MockPRRepo, patch(
-            "harness.indexer.index.SkillRepo"
+        with patch("senrah.indexer.index.PRRepo") as MockPRRepo, patch(
+            "senrah.indexer.index.SkillRepo"
         ) as MockSkillRepo, patch(
-            "harness.indexer.index.embed_texts", new=_fake_embed_texts
+            "senrah.indexer.index.embed_texts", new=_fake_embed_texts
         ):
             MockPRRepo.return_value.unindexed_prs.return_value = [_pr(1, 101)]
             asyncio.run(indexer.run(7))
@@ -82,7 +82,7 @@ class TestReindex:
     def test_indexer_module_has_no_connector_dependency(self) -> None:
         """INDEX-03 criterion: no GitHub API calls during reindex — enforced
         structurally: the indexer module never imports a connector."""
-        import harness.indexer.index as mod
+        import senrah.indexer.index as mod
 
         src = open(mod.__file__, encoding="utf-8").read()
         import_lines = [
@@ -121,9 +121,9 @@ class TestTruncationContext:
         indexer = Indexer(MagicMock(), cfg)
         big = "token " * 200
 
-        with patch("harness.indexer.index.PRRepo") as MockPRRepo, patch(
-            "harness.indexer.index.SkillRepo"
-        ), patch("harness.indexer.index.embed_texts", new=_fake_embed_texts):
+        with patch("senrah.indexer.index.PRRepo") as MockPRRepo, patch(
+            "senrah.indexer.index.SkillRepo"
+        ), patch("senrah.indexer.index.embed_texts", new=_fake_embed_texts):
             MockPRRepo.return_value.unindexed_prs.return_value = [
                 _pr(1, 4242, diff=big)
             ]

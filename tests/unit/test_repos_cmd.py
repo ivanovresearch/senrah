@@ -1,5 +1,5 @@
 """
-Unit tests for harness repos command rendering (OPS-02).
+Unit tests for senrah repos command rendering (OPS-02).
 
 Covers:
 - repos renders a table with YAML repo list JOIN DB op-state
@@ -25,14 +25,14 @@ class TestReposCmd:
     def test_repos_cmd_importable(self) -> None:
         """cli.repos is importable (scaffold test)."""
         try:
-            from harness.cli import repos as repos_module  # noqa: F401
+            from senrah.cli import repos as repos_module  # noqa: F401
         except ImportError:
-            pytest.fail("harness.cli.repos is not importable — Plan 05 creates this module")
+            pytest.fail("senrah.cli.repos is not importable — Plan 05 creates this module")
 
     def test_repos_shows_never_run_for_missing_op_state(self) -> None:
         """A repo with no DB row shows a 'never run' indicator."""
         try:
-            from harness.cli.repos import _format_op_state_row
+            from senrah.cli.repos import _format_op_state_row
         except ImportError:
             pytest.skip("repos._format_op_state_row not yet implemented (Plan 05)")
 
@@ -45,8 +45,8 @@ class TestReposCmd:
     def test_repos_shows_cursor_when_op_state_present(self) -> None:
         """A repo with a DB row shows the cursor value."""
         try:
-            from harness.cli.repos import _format_op_state_row
-            from harness.db.models import RepoOpState
+            from senrah.cli.repos import _format_op_state_row
+            from senrah.db.models import RepoOpState
         except ImportError:
             pytest.skip("repos._format_op_state_row not yet implemented (Plan 05)")
 
@@ -65,7 +65,7 @@ class TestReposCmd:
     def test_get_op_state_not_called_with_write(self) -> None:
         """RepositoryRepo.get_op_state is called (read-only); no write methods called."""
         try:
-            from harness.db.repos.repository import RepositoryRepo
+            from senrah.db.repos.repository import RepositoryRepo
         except ImportError:
             pytest.skip("RepositoryRepo.get_op_state not yet implemented (Plan 01/Task 3)")
 
@@ -103,10 +103,10 @@ class TestReposCmdRender:
     """Command-level: YAML scope JOIN DB op-state, default fallback, never-run, no writes."""
 
     def test_repos_table_join_and_never_run(self, tmp_path, monkeypatch, capsys) -> None:
-        from harness.cli.repos import repos_cmd
-        from harness.db.models import Project, RepoOpState
+        from senrah.cli.repos import repos_cmd
+        from senrah.db.models import Project, RepoOpState
 
-        (tmp_path / "harness.yaml").write_text(_TWO_REPO_YAML, encoding="utf-8")
+        (tmp_path / "senrah.yaml").write_text(_TWO_REPO_YAML, encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("DATABASE_URL", "postgresql://u@localhost/db")
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_fake")
@@ -125,10 +125,10 @@ class TestReposCmdRender:
             last_error=None,
         )
 
-        with patch("harness.cli.repos.connect_sync", return_value=cm), patch(
-            "harness.cli.repos.ProjectRepo"
+        with patch("senrah.cli.repos.connect_sync", return_value=cm), patch(
+            "senrah.cli.repos.ProjectRepo"
         ) as MockProjectRepo, patch(
-            "harness.cli.repos.RepositoryRepo"
+            "senrah.cli.repos.RepositoryRepo"
         ) as MockRepoRepo:
             MockProjectRepo.return_value.get_by_name.return_value = Project(
                 id=1, name="proj"

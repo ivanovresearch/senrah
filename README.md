@@ -1,6 +1,6 @@
-# Harness
+# Senrah
 
-Harness indexes the merged-PR history of a codebase and serves it to AI coding agents over MCP. When an agent works on a task, it can retrieve real precedents — how similar problems were actually solved in *this* codebase — instead of guessing.
+Senrah indexes the merged-PR history of a codebase and serves it to AI coding agents over MCP. When an agent works on a task, it can retrieve real precedents — how similar problems were actually solved in *this* codebase — instead of guessing.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ Harness indexes the merged-PR history of a codebase and serves it to AI coding a
    docker compose up -d
    ```
 
-2. **Install harness:**
+2. **Install senrah:**
 
    ```bash
    python -m venv .venv
@@ -32,11 +32,11 @@ Harness indexes the merged-PR history of a codebase and serves it to AI coding a
    # Edit .env with your real DATABASE_URL, GITHUB_TOKEN, OPENAI_API_KEY
    ```
 
-4. **Configure your project** (copy `harness.yaml.example` → `harness.yaml`):
+4. **Configure your project** (copy `senrah.yaml.example` → `senrah.yaml`):
 
    ```bash
-   cp harness.yaml.example harness.yaml
-   # Edit harness.yaml to point at your repos (no secrets here)
+   cp senrah.yaml.example senrah.yaml
+   # Edit senrah.yaml to point at your repos (no secrets here)
    ```
 
 5. **Run migrations:**
@@ -48,9 +48,9 @@ Harness indexes the merged-PR history of a codebase and serves it to AI coding a
 6. **Ingest, index, and search:**
 
    ```bash
-   harness ingest
-   harness index
-   harness search "fix for cursor pagination in async resolver"
+   senrah ingest
+   senrah index
+   senrah search "fix for cursor pagination in async resolver"
    ```
 
 ## Required Token Scopes
@@ -76,11 +76,11 @@ Harness indexes the merged-PR history of a codebase and serves it to AI coding a
 
 - **Never commit `.env`** — it is git-ignored. Use `.env.example` for placeholders.
 - Secrets (`DATABASE_URL`, `GITHUB_TOKEN`, `OPENAI_API_KEY`) come **only from environment variables**.
-- `harness.yaml` holds non-secret tunables only. Any secret key in `harness.yaml` will cause a startup error.
+- `senrah.yaml` holds non-secret tunables only. Any secret key in `senrah.yaml` will cause a startup error.
 
 ## Configuration
 
-Non-secret tunables live in `harness.yaml` (project root or any parent directory up to `.git`):
+Non-secret tunables live in `senrah.yaml` (project root or any parent directory up to `.git`):
 
 ```yaml
 project:

@@ -21,7 +21,7 @@ from datetime import datetime
 import pytest
 
 # We import the composite_score function (pure, no DB required)
-from harness.scoring import composite_score
+from senrah.scoring import composite_score
 
 
 # ---------------------------------------------------------------------------

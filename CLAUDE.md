@@ -1,9 +1,9 @@
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 
-**Harness**
+**Senrah**
 
-Harness is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a `search_prs` MCP tool.
+Senrah is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a `search_prs` MCP tool.
 
 **Core Value:** An AI agent solving a task in this codebase can retrieve the most relevant real merged-PR precedents (problem + the diff that solved it) via MCP, ranked by semantic similarity. If everything else fails, that retrieval must work.
 
@@ -48,7 +48,7 @@ Harness is an open-source Python tool that indexes the merged-PR history of a co
 | `uv` | Fast package manager + virtual env | `uv pip install`, `uv run`; replaces pip+venv; `uv add "mcp[cli]"` is the official MCP install recommendation |
 | `ruff` | Linting + formatting | Replaces flake8 + black + isort; single tool, fastest linter available |
 | `mypy` | Static type checking | Required — the repository pattern, connector interface, and MCP output types benefit significantly from static types |
-| `pyproject.toml` | Project metadata + deps | PEP 517/518 standard; `[project.scripts]` entry point for the `harness` CLI |
+| `pyproject.toml` | Project metadata + deps | PEP 517/518 standard; `[project.scripts]` entry point for the `senrah` CLI |
 ## Installation
 # Core runtime
 # Dev / test
@@ -58,7 +58,7 @@ Harness is an open-source Python tool that indexes the merged-PR history of a co
 | MCP transport | FastMCP (`mcp` SDK 1.27) | Rolling your own JSON-RPC over stdio | FastMCP handles protocol negotiation, capability advertisement, and error marshaling; no value in re-implementing the spec |
 | PostgreSQL driver | psycopg3 | asyncpg | asyncpg is async-only; psycopg3 supports both sync (CLI/migration code) and async (MCP server) in one package; pgvector-python has first-class psycopg3 support; asyncpg requires a separate sync driver |
 | PostgreSQL driver | psycopg3 | SQLAlchemy Core/ORM | This project uses repository-pattern data access — raw SQL is more legible and direct for vector similarity queries; SQLAlchemy adds ~300 KB of dependency weight and abstracts over the `<=>` cosine operator awkwardly |
-| pgvector index | HNSW (`vector_cosine_ops`) | IVFFlat | HNSW: ~1.5 ms search vs IVFFlat ~2.4 ms at 99% recall; no rebuild required on incremental ingest (critical for harness's continuous ingest pattern); higher memory usage acceptable at MVP scale (<100K PRs) |
+| pgvector index | HNSW (`vector_cosine_ops`) | IVFFlat | HNSW: ~1.5 ms search vs IVFFlat ~2.4 ms at 99% recall; no rebuild required on incremental ingest (critical for senrah's continuous ingest pattern); higher memory usage acceptable at MVP scale (<100K PRs) |
 | GitHub API client | PyGithub + httpx | gidgethub | gidgethub is sans-I/O and requires choosing an async HTTP backend; PyGithub has built-in `GithubRetry`, typed objects, and a larger community; diff fetching still requires a raw HTTP call regardless of choice |
 | GitHub API client | PyGithub + httpx | Raw httpx only | PyGithub saves writing pagination, object deserialization, and retry logic for all PR/issue metadata endpoints; only the diff endpoint needs raw httpx (media type header) |
 | CLI framework | typer | click | Typer is built on Click but eliminates argument/option decorator boilerplate via type hints; same power, less code |
@@ -71,7 +71,7 @@ Harness is an open-source Python tool that indexes the merged-PR history of a co
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
 | SQLAlchemy ORM | Adds a full ORM layer with no benefit over raw SQL for a repository-pattern design; `Column(Vector(1536))` adds mapping complexity without improving the cosine-distance queries | Raw psycopg3 SQL + alembic migrations |
-| LangChain / LlamaIndex | Harness is purpose-built read-only search; these frameworks add multi-LLM abstraction, chain orchestration, and document loaders that are all out of scope; they also have heavy transitive dependencies and fast-breaking APIs | Direct `openai` SDK + custom chunking/truncation |
+| LangChain / LlamaIndex | Senrah is purpose-built read-only search; these frameworks add multi-LLM abstraction, chain orchestration, and document loaders that are all out of scope; they also have heavy transitive dependencies and fast-breaking APIs | Direct `openai` SDK + custom chunking/truncation |
 | SSE transport for MCP | Deprecated in favor of Streamable HTTP; MCP SDK still supports it but it's the legacy path | `mcp.run(transport="streamable-http")` |
 | psycopg2 | Maintenance mode; no native async; not recommended for new projects by the psycopg maintainers themselves | psycopg3 (`psycopg[binary,pool]`) |
 | asyncpg | Async-only — ingestion CLI code and migration scripts are sync; would require a second driver | psycopg3 (supports both sync and async) |

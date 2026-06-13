@@ -1,5 +1,5 @@
 """
-tests/unit/test_scoring.py — Unit tests for harness.scoring.composite_score.
+tests/unit/test_scoring.py — Unit tests for senrah.scoring.composite_score.
 
 Covers SEARCH-01: score = problem_weight × problem_sim + solution_weight × solution_sim.
 The function is pure (no I/O, no deps) so all tests run without Docker or OpenAI.
@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from harness.scoring import composite_score
+from senrah.scoring import composite_score
 
 
 class TestCompositeScoreFormula:
@@ -79,24 +79,24 @@ class TestScoringModuleConstraints:
     """Structural constraints: pure function, no heavy deps (STATE.md)."""
 
     def test_no_db_imports(self):
-        """scoring.py must not import from harness.db or harness.cli."""
-        import harness.scoring as m
-        source = importlib.util.find_spec("harness.scoring")
+        """scoring.py must not import from senrah.db or senrah.cli."""
+        import senrah.scoring as m
+        source = importlib.util.find_spec("senrah.scoring")
         assert source is not None
         # Re-read the source to check imports
         import pathlib
         src_path = pathlib.Path(source.origin)
         src_text = src_path.read_text()
-        assert "harness.db" not in src_text, "scoring.py must not import harness.db"
-        assert "harness.cli" not in src_text, "scoring.py must not import harness.cli"
-        assert "harness.indexer" not in src_text, "scoring.py must not import harness.indexer"
+        assert "senrah.db" not in src_text, "scoring.py must not import senrah.db"
+        assert "senrah.cli" not in src_text, "scoring.py must not import senrah.cli"
+        assert "senrah.indexer" not in src_text, "scoring.py must not import senrah.indexer"
 
     def test_no_external_deps(self):
         """scoring.py should have no non-stdlib import statements (pure function requirement)."""
         import pathlib
         import importlib.util
         import re
-        source = importlib.util.find_spec("harness.scoring")
+        source = importlib.util.find_spec("senrah.scoring")
         src_path = pathlib.Path(source.origin)
         src_text = src_path.read_text()
         # Only stdlib imports allowed: typing, __future__ etc.

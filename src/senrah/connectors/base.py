@@ -1,0 +1,231 @@
+"""
+senrah.connectors.base — ConnectorProtocol, RawPR, PRMeta,
+RateLimitStatus, and extract_linked_issue.
+
+The ConnectorProtocol is the core extensibility seam:
+- Defined as typing.Protocol (structural subtyping, NOT an ABC)
+- A new VCS source is added by implementing these four methods; the Ingester
+  never needs to change (INGEST-01 / STATE.md decision)
+- The connector MUST NOT import anything from db/, indexer/, or ingester/
+
+Design decisions:
+- typing.Protocol: zero-overhead structural typing; no base class import needed
+  (STATE.md decision: "ConnectorProtocol as typing.Protocol")
+- Frozen dataclasses: immutable value objects for thread safety and correctness
+- extract_linked_issue: minimal Phase 1 regex; case-insensitive for closes/fixes/resolves
+- RawPR.diff is str | None: None during traversal (diff-less yield); fetched
+  only for survivors via fetch_diff() (INGEST-03 pre-fetch filter guarantee)
+- PRMeta: lightweight (number, merged_at) for the newest-N window provider
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Callable, Iterator, Protocol
+
+# ---------------------------------------------------------------------------
+# Dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RawPR:
+    """A merged pull request as returned by a connector.
+
+    Carries all metadata needed for the Ingester to write to pull_requests
+    without further API calls.
+
+    diff is None during traversal (list_merged_prs yields cheap metadata only).
+    The diff is fetched for surviving PRs via fetch_diff() after bot/giant
+    filtering — this structurally guarantees no diff is fetched for excluded PRs
+    (INGEST-03 pre-fetch filter guarantee).
+    """
+
+    number: int
+    title: str
+    body: str  # PR description (may be empty)
+    diff: str | None  # None until fetched via fetch_diff(); raw diff text after
+    author: str
+    merged_at: datetime
+    repo_full_name: str
+    linked_issue: str | None  # extracted from body via Closes/Fixes regex
+    files_changed: list[str]
+    # Eager giant-filter fields — populated on the single-PR path (fetch_pr) and
+    # in tests. On the diff-less traversal path they stay 0 and the real values
+    # are read lazily via size_loader/size() (see below). Default 0 so the
+    # traversal constructor can omit them.
+    additions: int = 0
+    deletions: int = 0
+    # Cheap changed-file COUNT from the PR metadata (pr.changed_files). Carried
+    # separately from files_changed because the diff-less traversal yields the
+    # count (one int) without the file list (get_files() would paginate). The
+    # Ingester's giant-PR filter (INGEST-03) reads this; files_changed stays []
+    # at traversal time.
+    changed_files: int = 0
+    # Lazy loader for the giant-filter fields (changed_files, additions,
+    # deletions). On the connector's diff-less traversal path these are NOT read
+    # eagerly — they live ONLY in the per-PR completion payload (GET /pulls/{n}),
+    # the N+1 of Finding 2. Reading them at construction would charge that GET for
+    # every yielded PR, INCLUDING bots that is_bot rejects for free off the
+    # list-payload author. The loader defers the read to size(), so the GET is
+    # paid only when the consumer actually needs the size (i.e. AFTER is_bot).
+    # compare/repr excluded so the closure does not affect this value object.
+    size_loader: Callable[[], tuple[int, int, int]] | None = field(
+        default=None, compare=False, repr=False
+    )
+
+    def size(self) -> tuple[int, int, int]:
+        """Return (changed_files, additions, deletions) for the giant filter.
+
+        If a lazy loader is set (traversal path), invoke it now — THIS is where
+        the per-PR completion GET fires. Call ONLY after is_bot so a bot rejected
+        by author costs zero completion GET. With no loader (fetch_pr, tests) the
+        eager fields are returned.
+        """
+        if self.size_loader is not None:
+            return self.size_loader()
+        return (self.changed_files, self.additions, self.deletions)
+
+
+@dataclass(frozen=True)
+class PRMeta:
+    """Lightweight PR metadata for the newest-N window-lower-bound provider.
+
+    Returned by list_recent_merged_meta(); used by the Ingester to compute
+    the last_n window lower-bound via resolve_since(scope, last_n_merged_at_provider=...).
+    """
+
+    number: int
+    merged_at: datetime
+
+
+@dataclass(frozen=True)
+class RateLimitStatus:
+    """GitHub (or other VCS) rate-limit state."""
+
+    remaining: int
+    reset_at: datetime
+    limit: int
+
+
+# ---------------------------------------------------------------------------
+# Linked-issue extraction (RESEARCH Pattern 3)
+# ---------------------------------------------------------------------------
+
+_LINKED_ISSUE_RE = re.compile(
+    r"(?:clos(?:es?|e)|fix(?:es?)?|resolv(?:es?|e))\s+#(\d+)",
+    re.IGNORECASE,
+)
+
+
+def extract_linked_issue(body: str) -> str | None:
+    """Return the first linked issue reference (e.g. '#123') from a PR body.
+
+    Recognises the keywords closes/close, fixes/fix, resolves/resolve
+    followed by '#<number>'.  Case-insensitive.  Returns None when no
+    reference is found.
+
+    Examples:
+        extract_linked_issue("Closes #123")  → "#123"
+        extract_linked_issue("fixes #42")    → "#42"
+        extract_linked_issue("No issue")     → None
+    """
+    match = _LINKED_ISSUE_RE.search(body or "")
+    return f"#{match.group(1)}" if match else None
+
+
+# ---------------------------------------------------------------------------
+# ConnectorProtocol (typing.Protocol — structural subtyping)
+# ---------------------------------------------------------------------------
+
+
+class ConnectorProtocol(Protocol):
+    """Interface for VCS connectors.
+
+    Any class that implements these four methods structurally satisfies the
+    interface — no import or inheritance of this class is required.
+
+    Boundary constraint: implementations MUST NOT import senrah.db,
+    senrah.indexer, or senrah.ingester (connectors know nothing about DB
+    schema or embeddings).
+    """
+
+    def validate_credentials(self, repo_full_name: str | None = None) -> None:
+        """Raise an exception if credentials are missing or invalid.
+
+        Phase 1: verifies that the token can authenticate.
+        Phase 3 (OPS-01): when repo_full_name is given, also performs a live
+        test-read on the target repo and raises a token-free message on 403/404.
+        """
+        ...
+
+    def list_merged_prs(
+        self,
+        repo_full_name: str,
+        *,
+        since: datetime | None = None,
+        last_n: int | None = None,
+    ) -> Iterator[RawPR]:
+        """Yield merged PRs for the given repository's scope window.
+
+        Two modes, selected by whether a scope lower bound (``since``) is given.
+        Crucially, traversal is bounded ONLY by the configured scope — never by a
+        stored cursor. Every run re-scans the whole scope window; the Ingester's
+        present-in-DB probe makes that cheap (no diff is re-fetched for PRs already
+        ingested). This is what makes interrupt/resume correct: a PR missed on a
+        previous run (interrupted before it, or dropped into per-PR error
+        isolation) is simply re-encountered by the next scope scan and back-filled
+        (gate #1 / BUG C fix — see docs/PRODUCTION-READINESS.md).
+
+        - since is None: created-ascending forward spine. Stable, fully-paginable;
+          the correct enumeration of (unbounded) repo history.
+        - since is set: updated-descending scan that BREAKS as soon as
+          updated_at < since. A merge bumps updated_at (updated_at >= merged_at),
+          so every PR with merged_at >= since has updated_at >= since and is
+          visited before the break — the scan covers the full scope window without
+          walking the whole history. Yields merged PRs with merged_at >= since.
+
+        Yields cheap PR metadata with diff=None — no diff is fetched during
+        traversal; the diff is fetched only for survivors via fetch_diff().
+
+        Args:
+            repo_full_name: "owner/repo" string.
+            since: Scope-window lower bound; skip PRs with merged_at < since.
+                   None selects the created-asc backfill (unbounded enumeration).
+            last_n: Stop after yielding this many merged PRs.  None = no limit.
+        """
+        ...
+
+    def fetch_diff(self, repo_full_name: str, number: int) -> str:
+        """Fetch the raw diff text for a single PR by number.
+
+        This is the ONLY place diffs are fetched — called by the Ingester for
+        PRs that survive bot/giant filtering (INGEST-03 structurally guaranteed).
+        """
+        ...
+
+    def fetch_pr(self, repo_full_name: str, number: int) -> RawPR:
+        """Fetch a single PR by number."""
+        ...
+
+    def list_recent_merged_meta(
+        self, repo_full_name: str, n: int
+    ) -> list[PRMeta]:
+        """Return the newest N merged PRs by merged_at (number, merged_at).
+
+        Metadata-only scan — no diffs fetched. Because no endpoint orders by
+        merged_at, this scans updated-descending and keeps the top-N by merged_at
+        in a bounded heap, stopping once updated_at drops below the smallest
+        merged_at already held (merged_at <= updated_at, so nothing later can
+        enter the top-N). This returns the true newest-N by merge time rather than
+        the created-order proxy. Used by the Ingester to compute the last_n window
+        lower-bound: since = min(result[i].merged_at), passed to
+        list_merged_prs(since=...).
+        """
+        ...
+
+    def rate_limit_status(self) -> RateLimitStatus:
+        """Return the current rate-limit status for the authenticated user."""
+        ...

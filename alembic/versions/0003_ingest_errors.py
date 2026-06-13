@@ -4,7 +4,7 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-06-12
 
-OPS-04 (`harness status` ingest section): the spec requires a LIST of
+OPS-04 (`senrah status` ingest section): the spec requires a LIST of
 errored PRs, but per-PR errors were only logged to stderr and lost.
 ingest_errors stores the most recent run's per-PR failures as JSONB:
 [{"number": 38123, "error": "..."}]. Overwritten on every run (empty

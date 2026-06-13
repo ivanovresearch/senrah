@@ -24,8 +24,8 @@ import httpx
 import pytest
 import respx
 
-from harness.connectors.base import PRMeta
-from harness.connectors.github import GitHubConnector
+from senrah.connectors.base import PRMeta
+from senrah.connectors.github import GitHubConnector
 
 FAKE_TOKEN = "ghp_fake_connector_traversal_token_12345"
 DIFF_URL = "https://github.com/owner/repo/pull/{}.diff"
@@ -64,7 +64,7 @@ def _make_pr_mock(
 
 @pytest.fixture
 def connector() -> GitHubConnector:
-    with patch("harness.connectors.github.Github"):
+    with patch("senrah.connectors.github.Github"):
         return GitHubConnector(FAKE_TOKEN)
 
 
@@ -77,7 +77,7 @@ class TestCreatedAscTraversal:
         pr = _make_pr_mock(1, merged_at=datetime(2024, 3, 1, tzinfo=timezone.utc))
         respx.get(DIFF_URL.format(1)).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -113,7 +113,7 @@ class TestCreatedAscTraversal:
         old_pr = _make_pr_mock(1, merged_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
         respx.get(DIFF_URL.format(2)).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [new_pr, old_pr]  # updated-desc
@@ -132,7 +132,7 @@ class TestCreatedAscTraversal:
         unmerged = _make_pr_mock(2, merged_at=None)
         respx.get(DIFF_URL.format(1)).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [merged, unmerged]
@@ -154,7 +154,7 @@ class TestCreatedAscTraversal:
         for i in range(1, 6):
             respx.get(DIFF_URL.format(i)).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -177,7 +177,7 @@ class TestListRecentMergedMeta:
             for i in range(1, 4)
         ]
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -203,7 +203,7 @@ class TestListRecentMergedMeta:
         unmerged = _make_pr_mock(2, merged_at=None)
         another_merged = _make_pr_mock(3, merged_at=datetime(2024, 5, 1, tzinfo=timezone.utc))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             # descending order: newest first
@@ -224,7 +224,7 @@ class TestListRecentMergedMeta:
             for i in range(1, 6)  # 5 merged PRs
         ]
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -242,7 +242,7 @@ class TestListRecentMergedMeta:
             for i in range(1, 3)  # only 2 merged PRs
         ]
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -260,7 +260,7 @@ class TestListRecentMergedMeta:
             42, merged_at=merged_at, created_at=datetime(2024, 1, 15, tzinfo=timezone.utc)
         )
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -291,7 +291,7 @@ class TestListRecentMergedMeta:
                 )
             )
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -326,7 +326,7 @@ class TestListRecentMergedMeta:
         """
         from datetime import timezone
 
-        from harness.config import Scope, resolve_since
+        from senrah.config import Scope, resolve_since
 
         def mk(number, merged, updated):
             return _make_pr_mock(
@@ -344,7 +344,7 @@ class TestListRecentMergedMeta:
             mk(5, (1, 10), (1, 10)),
         ]
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs

@@ -1,4 +1,4 @@
-# A/B Results — Harness uplift on 12 real efcore tasks
+# A/B Results — Senrah uplift on 12 real efcore tasks
 
 Run 2026-06-11..12 per the frozen `PROTOCOL.md`. All 24 runs completed; every
 treatment run verifiably queried the search tool (query log + self-report).

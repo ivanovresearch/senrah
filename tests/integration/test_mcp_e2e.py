@@ -22,11 +22,11 @@ import psycopg
 import pytest
 from pgvector.psycopg import register_vector
 
-from harness.config import EnvSettings, McpConfig, SearchConfig, YamlConfig
-from harness.db.models import Project, PullRequest, Repository
-from harness.db.repos.pr import PRRepo
-from harness.db.repos.project import ProjectRepo
-from harness.db.repos.repository import RepositoryRepo
+from senrah.config import EnvSettings, McpConfig, SearchConfig, YamlConfig
+from senrah.db.models import Project, PullRequest, Repository
+from senrah.db.repos.pr import PRRepo
+from senrah.db.repos.project import ProjectRepo
+from senrah.db.repos.repository import RepositoryRepo
 
 TARGET_TITLE = "Fix async cancellation token propagation in runtime"
 TARGET_BODY = "The async runtime was not propagating cancellation tokens correctly."
@@ -37,8 +37,8 @@ def mcp_e2e_db(pg_dsn_migrated: str, fake_embedder):
     """Seed 3 PRs and index them with the fake embedder; return the DSN."""
     import asyncio as _asyncio
 
-    from harness.config import EmbedConfig
-    from harness.indexer.index import Indexer
+    from senrah.config import EmbedConfig
+    from senrah.indexer.index import Indexer
 
     conn = psycopg.connect(pg_dsn_migrated)
     register_vector(conn)
@@ -69,7 +69,7 @@ def mcp_e2e_db(pg_dsn_migrated: str, fake_embedder):
     async def fake_embed_texts(texts, model, **kwargs):
         return [fake_embedder(t) for t in texts]
 
-    with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+    with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
         indexed = _asyncio.run(
             Indexer(conn, EmbedConfig(model="m", version="v-e2e")).run(repo.id)
         )
@@ -82,8 +82,8 @@ async def test_search_prs_v1_full_stack(mcp_e2e_db: str, fake_embedder):
     """search_prs_v1 over a real pool + real pgvector DB returns the target PR."""
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.indexer.embedder import build_problem_text
-    from harness.mcp.server import create_mcp_server
+    from senrah.indexer.embedder import build_problem_text
+    from senrah.mcp.server import create_mcp_server
 
     env = EnvSettings(
         database_url=mcp_e2e_db,
@@ -102,7 +102,7 @@ async def test_search_prs_v1_full_stack(mcp_e2e_db: str, fake_embedder):
     async def fake_embed_texts(texts, model, **kwargs):
         return [fake_embedder(t) for t in texts]
 
-    with patch("harness.mcp.server.embed_texts", new=fake_embed_texts):
+    with patch("senrah.mcp.server.embed_texts", new=fake_embed_texts):
         server = create_mcp_server(env=env, cfg=cfg)
         async with create_connected_server_and_client_session(
             server._mcp_server

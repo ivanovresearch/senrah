@@ -1,5 +1,5 @@
 """
-Integration tests for harness.db.repos.pr.PRRepo.
+Integration tests for senrah.db.repos.pr.PRRepo.
 
 Uses the testcontainers pg_dsn_migrated fixture (from conftest.py) to run
 against a real pgvector container with the full schema applied.
@@ -24,10 +24,10 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from harness.db.models import Project, PullRequest, Repository
-from harness.db.repos.pr import PRRepo, _compute_content_hash
-from harness.db.repos.project import ProjectRepo
-from harness.db.repos.repository import RepositoryRepo
+from senrah.db.models import Project, PullRequest, Repository
+from senrah.db.repos.pr import PRRepo, _compute_content_hash
+from senrah.db.repos.project import ProjectRepo
+from senrah.db.repos.repository import RepositoryRepo
 
 
 # ---------------------------------------------------------------------------

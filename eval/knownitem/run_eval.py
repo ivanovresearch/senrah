@@ -6,7 +6,7 @@ SkillRepo.search per query with score_threshold=0.0 (ranking metrics are
 threshold-free BY PROTOCOL — the threshold is tuned separately, never here),
 and reports recall@1, recall@5, recall@10 and MRR@10 for the target PR.
 
-Weights come from harness.yaml (the live config) and are PRINTED into the
+Weights come from senrah.yaml (the live config) and are PRINTED into the
 results so every run records what it measured. Output:
 eval/knownitem/results-<tag>.json + a summary line to stdout.
 
@@ -31,10 +31,10 @@ HERE = pathlib.Path(__file__).parent
 
 
 async def _run(tag: str) -> None:
-    from harness.config import EnvSettings, find_config_file, load_yaml_config
-    from harness.db.pool import create_pool
-    from harness.db.repos.skill import SkillRepo
-    from harness.indexer.embedder import embed_texts, truncate_to_tokens
+    from senrah.config import EnvSettings, find_config_file, load_yaml_config
+    from senrah.db.pool import create_pool
+    from senrah.db.repos.skill import SkillRepo
+    from senrah.indexer.embedder import embed_texts, truncate_to_tokens
 
     load_dotenv(".env")
     env = EnvSettings()

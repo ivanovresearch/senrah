@@ -20,7 +20,7 @@ import pytest
 import respx
 import httpx
 
-from harness.connectors.github import GitHubConnector
+from senrah.connectors.github import GitHubConnector
 
 
 FAKE_TOKEN = "ghp_fake_validate_creds_token_9999999"
@@ -32,7 +32,7 @@ class TestValidateCredentialsTestRead:
 
     def test_valid_token_and_repo_does_not_raise(self) -> None:
         """A valid token + accessible repo: validate_credentials succeeds."""
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_user = MagicMock()
             mock_user.login = "valid_user"
@@ -50,7 +50,7 @@ class TestValidateCredentialsTestRead:
 
     def test_403_raises_token_free_message(self) -> None:
         """403 on test-read raises a clear, token-free error."""
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_user = MagicMock()
             mock_user.login = "valid_user"
@@ -70,7 +70,7 @@ class TestValidateCredentialsTestRead:
 
     def test_404_raises_token_free_message(self) -> None:
         """404 on test-read raises a clear, token-free error."""
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_user = MagicMock()
             mock_user.login = "valid_user"
@@ -88,7 +88,7 @@ class TestValidateCredentialsTestRead:
 
     def test_auth_only_no_repo_does_not_raise(self) -> None:
         """validate_credentials() without repo_full_name (auth-only) still works."""
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_user = MagicMock()
             mock_user.login = "valid_user"
@@ -100,7 +100,7 @@ class TestValidateCredentialsTestRead:
 
     def test_error_message_is_descriptive(self) -> None:
         """Error message for 403 is descriptive (mentions PR/issues read or similar)."""
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_user = MagicMock()
             mock_user.login = "valid_user"

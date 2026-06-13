@@ -67,6 +67,6 @@ audit time: **297 passed** (unit + integration, one run, no deselections).
   gate with realistic tokens.
 - Full-history scan (58 commits at gate installation): no leaks.
   `tests/unit/test_secrets_hygiene.py` additionally guards the source tree.
-- The real per-user `harness.yaml` is untracked + gitignored
-  (`harness.yaml.example` is the committed template) — closing the most
+- The real per-user `senrah.yaml` is untracked + gitignored
+  (`senrah.yaml.example` is the committed template) — closing the most
   likely landing spot for a "temporary" token.

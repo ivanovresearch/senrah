@@ -1,15 +1,15 @@
-# Harness
+# Senrah
 
 ## What This Is
 
-Harness is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a versioned `search_prs_v1` MCP tool.
+Senrah is an open-source Python tool that indexes the merged-PR history of a codebase and serves it to AI coding agents (Claude Code, Codex, and others) over MCP. When an agent works on a task, it can pull real precedents — how similar problems were actually solved in *this* codebase — instead of guessing. It is read-only retrieval over your own version-control history: ingest merged PRs, embed problem + solution, expose a versioned `search_prs_v1` MCP tool.
 
 ## Current State (v1.0 shipped 2026-06-12)
 
 - Full pipeline live: ingest (GitHub, multi-repo, scoped, resumable) → index (reindexable, model/version-tracked) → search (CLI + MCP stdio/streamable-HTTP).
 - Working corpus: dotnet/efcore (487 PRs, ~10 months) + encode/httpx (88 PRs), 575 skills rows, uniform `text-embedding-3-small/v2`.
 - Retrieval quality instrumented: frozen known-item eval (`eval/knownitem/`, 218 queries — recall@1 0.670, recall@5 0.881, MRR@10 0.760) as the regression scale for any corpus/weights/model change.
-- Agent-uplift A/B run (`eval/ab/`): 12 real tasks, control vs Harness — statistical dead heat on outcomes, ZERO negative-uplift cases (the below-threshold confidence flag worked), two genuine convention-transfer wins from the deepest precedents available. Conclusion: **corpus depth, not weight tuning, is the next lever.**
+- Agent-uplift A/B run (`eval/ab/`): 12 real tasks, control vs Senrah — statistical dead heat on outcomes, ZERO negative-uplift cases (the below-threshold confidence flag worked), two genuine convention-transfer wins from the deepest precedents available. Conclusion: **corpus depth, not weight tuning, is the next lever.**
 - Test suite: 304 green (unit + integration incl. real-container MCP E2E); gitleaks pre-commit gate; QUAL-01..04 audited line-by-line (`docs/QUAL-AUDIT.md`).
 
 ## Core Value
@@ -31,11 +31,11 @@ An AI agent solving a task in this codebase can retrieve the most relevant real 
 - [ ] Corpus depth: `--scope all` / multi-year ingest — the A/B's identified lever; known-item eval is the before/after scale
 - [ ] Known-item eval v3: dedupe/penalize backport duplicates; investigate the 19 misses for systematics
 - [ ] CI: test suite + gitleaks scan server-side (gate currently per-clone opt-in)
-- [ ] `harness init` upsert comment-preservation gap (drops standalone comments above rewritten keys)
+- [ ] `senrah init` upsert comment-preservation gap (drops standalone comments above rewritten keys)
 
 ### Out of Scope
 
-- **LLM providers (Claude/Codex/local) inside harness** — harness is read-only search; agents only *consume* MCP. *(v1.0 audit: still right — the A/B used external agents cleanly.)*
+- **LLM providers (Claude/Codex/local) inside senrah** — senrah is read-only search; agents only *consume* MCP. *(v1.0 audit: still right — the A/B used external agents cleanly.)*
 - **Abstraction over other vector databases** — pgvector chosen; repository-pattern seam only. *(Still right.)*
 - **GitLab / Bitbucket connectors** — behind the connector seam. *(Still right; seam held — Ingester/MCP never import the concrete connector.)*
 - **Diff chunking** — single-vector with truncation; raw diff stored so chunking is reindex-only later. *(Still right, with data: 19% of solution embeddings truncate at 6000 tokens — revisit only if eval shows misses concentrate in truncated targets.)*
@@ -73,7 +73,7 @@ An AI agent solving a task in this codebase can retrieve the most relevant real 
 | Configurable weights (0.6/0.4) | Tunable per project | ⚠ Revisit framing — A/B showed tuning is second-order to corpus depth; keep configurable, don't invest |
 | Versioned MCP tool name | Format changes don't break dependent prompts | ✓ Good (untested by an actual v2 yet) |
 | ENV-only secrets | Open-source posture | ✓ Good — gitleaks history scan clean across all 70+ commits |
-| No LLM providers in harness | Read-only search | ✓ Good |
+| No LLM providers in senrah | Read-only search | ✓ Good |
 | Incremental ingest by `merged_at` cursor | Simplest correct cursor | ✗ REVERSED (BUG C) — high-water cursor as a resume boundary lost ~50% of a window on interrupt; replaced by full-scope re-scan + present-in-DB probe; cursor demoted to diagnostic. Lesson: a documented-but-under-scoped edge is still a blocker |
 | Build from spec, not prototype | Spec is source of truth | ✓ Good |
 | Full-scope re-scan + probe owns resume correctness (NEW, v1.0) | Bounded scopes make re-scan cheap; probe makes it free; recovers errored PRs without extra machinery | ✓ Good — live-proven 23/23 after worst-case interrupt |

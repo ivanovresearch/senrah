@@ -4,15 +4,15 @@ tests/unit/test_mcp_tool.py — MCP tool tests for search_prs_v1.
 These tests verify the full MCP tool contract using an in-process MCP client
 (mcp.shared.memory.create_connected_server_and_client_session — no subprocess needed).
 
-The tool implementation lives in harness.mcp.server (created in Plan 02-02).
+The tool implementation lives in senrah.mcp.server (created in Plan 02-02).
 
 Tests that only exercise the formatting/schema layer (test_files_capped_at_six,
 test_diff_excerpt_truncation, test_pr_link_derivation) verify the underlying helpers
 independent of the server.
 
 Mocking strategy:
-- Patch harness.mcp.server.embed_texts to return a deterministic 1536-dim vector
-- Patch harness.db.repos.skill.SkillRepo.search to return SearchResult fixtures (no real DB)
+- Patch senrah.mcp.server.embed_texts to return a deterministic 1536-dim vector
+- Patch senrah.db.repos.skill.SkillRepo.search to return SearchResult fixtures (no real DB)
 - Use create_connected_server_and_client_session for full protocol round-trips
 """
 
@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import pytest
 
-from harness.db.repos.skill import SearchResult
-from harness.mcp.formatting import fmt_diff_excerpt_mcp, fmt_files_mcp
-from harness.mcp.schema import score_to_confidence_label
+from senrah.db.repos.skill import SearchResult
+from senrah.mcp.formatting import fmt_diff_excerpt_mcp, fmt_files_mcp
+from senrah.mcp.schema import score_to_confidence_label
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def test_diff_excerpt_truncation():
 
 def test_pr_link_derivation():
     """build_envelope derives pr_link correctly (D-01 / MCP-02)."""
-    from harness.mcp.formatting import build_envelope
+    from senrah.mcp.formatting import build_envelope
 
     result = _make_result(number=55, repo_name="myorg/myrepo")
     envelope = build_envelope([result], best=None, debug=False, output_diff_limit=2000)
@@ -96,12 +96,12 @@ async def test_tool_registered():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(return_value=[_make_result()]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -120,10 +120,10 @@ async def test_tool_missing_query():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         server = create_mcp_server(env=None, cfg=None)
         async with create_connected_server_and_client_session(
             server._mcp_server
@@ -139,12 +139,12 @@ async def test_response_envelope_ok():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(return_value=[_make_result()]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -178,12 +178,12 @@ async def test_debug_components():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(return_value=[_make_result()]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -212,13 +212,13 @@ async def test_response_envelope_no_results():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
     # First call (above threshold) returns empty; second call (threshold=0.0) returns best
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(side_effect=[[], [_make_result(score=0.15)]]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -242,10 +242,10 @@ async def test_embed_failure_error():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     with patch(
-        "harness.mcp.server.embed_texts",
+        "senrah.mcp.server.embed_texts",
         new=AsyncMock(side_effect=RuntimeError("API key invalid")),
     ):
         server = create_mcp_server(env=None, cfg=None)
@@ -267,12 +267,12 @@ async def test_db_failure_error():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(side_effect=RuntimeError("connection refused postgresql://secret@localhost")),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -293,12 +293,12 @@ async def test_no_stdout_contamination():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(return_value=[_make_result()]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -320,12 +320,12 @@ async def test_stdio_transport_smoke():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
         with patch(
-            "harness.db.repos.skill.SkillRepo.search",
+            "senrah.db.repos.skill.SkillRepo.search",
             new=AsyncMock(return_value=[_make_result()]),
         ):
             server = create_mcp_server(env=None, cfg=None)
@@ -339,7 +339,7 @@ async def test_stdio_transport_smoke():
 
 def test_network_transport_config():
     """create_mcp_server with network settings sets stateless_http=True (MCP-04 / D-07)."""
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     server = create_mcp_server(env=None, cfg=None, host="127.0.0.1", port=8001)
     # The FastMCP server should be constructed with stateless_http=True
@@ -357,12 +357,12 @@ async def test_repos_filter():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
     mock_search = AsyncMock(return_value=[_make_result(repo_name="owner/repo")])
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
-        with patch("harness.db.repos.skill.SkillRepo.search", new=mock_search):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+        with patch("senrah.db.repos.skill.SkillRepo.search", new=mock_search):
             server = create_mcp_server(env=None, cfg=None)
             async with create_connected_server_and_client_session(
                 server._mcp_server
@@ -387,12 +387,12 @@ async def test_repos_all_default():
 
     from mcp.shared.memory import create_connected_server_and_client_session
 
-    from harness.mcp.server import create_mcp_server
+    from senrah.mcp.server import create_mcp_server
 
     fake_vec = [0.0] * 1536
     mock_search = AsyncMock(return_value=[_make_result()])
-    with patch("harness.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
-        with patch("harness.db.repos.skill.SkillRepo.search", new=mock_search):
+    with patch("senrah.mcp.server.embed_texts", new=AsyncMock(return_value=[fake_vec])):
+        with patch("senrah.db.repos.skill.SkillRepo.search", new=mock_search):
             server = create_mcp_server(env=None, cfg=None)
             async with create_connected_server_and_client_session(
                 server._mcp_server

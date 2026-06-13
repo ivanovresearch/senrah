@@ -13,13 +13,13 @@ venv/
 .pytest_cache/
 
 # Project-local config: real per-user tunables stay local (copy from
-# harness.yaml.example). Keeps "temporary" tokens from ever being tracked.
-harness.yaml
+# senrah.yaml.example). Keeps "temporary" tokens from ever being tracked.
+senrah.yaml
 
 # Local tooling binaries (gitleaks etc.) — fetched per machine, never committed
 tools/
 
 # Runtime artifacts: opt-in search log (may contain query text) and the
 # MCP heartbeat/status file
-harness-search.log
-harness-mcp-status.json
+senrah-search.log
+senrah-mcp-status.json

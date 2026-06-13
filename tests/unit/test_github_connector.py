@@ -1,5 +1,5 @@
 """
-Unit tests for harness.connectors.base and harness.connectors.github.
+Unit tests for senrah.connectors.base and senrah.connectors.github.
 
 All tests use respx to mock httpx diff-URL fetch and a stubbed PyGithub
 PR object (via unittest.mock.patch).  No real network calls, no real token.
@@ -23,13 +23,13 @@ import pytest
 import respx
 import httpx
 
-from harness.connectors.base import (
+from senrah.connectors.base import (
     ConnectorProtocol,
     RateLimitStatus,
     RawPR,
     extract_linked_issue,
 )
-from harness.connectors.github import GitHubConnector
+from senrah.connectors.github import GitHubConnector
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ class TestGitHubConnectorListMergedPRs:
 
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [merged_pr, unmerged_pr]
@@ -186,7 +186,7 @@ class TestGitHubConnectorListMergedPRs:
         ]
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -206,7 +206,7 @@ class TestGitHubConnectorListMergedPRs:
         ]
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -232,7 +232,7 @@ class TestGitHubConnectorListMergedPRs:
             return_value=httpx.Response(200, text="should-not-be-fetched")
         )
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -272,7 +272,7 @@ class TestGitHubConnectorListMergedPRs:
         # No diff URL route should be called during traversal
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -304,7 +304,7 @@ class TestGitHubConnectorListMergedPRs:
         pr = _make_mock_pr(5, "Title", "Fixes #500", MERGED_AT, DIFF_URL)
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -321,7 +321,7 @@ class TestGitHubConnectorListMergedPRs:
         pr = _make_mock_pr(6, "Refactor", "Just a refactor, no issue.", MERGED_AT, DIFF_URL)
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = [pr]
@@ -343,7 +343,7 @@ class TestGitHubConnectorListMergedPRs:
         ]
         respx.get(DIFF_URL).mock(return_value=httpx.Response(200, text=FAKE_DIFF))
 
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             mock_g = MockGithub.return_value
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = prs
@@ -370,7 +370,7 @@ def test_github_connector_satisfies_connector_protocol() -> None:
     """
     # A ConnectorProtocol-typed variable can hold a GitHubConnector.
     # This is a runtime duck-type check; mypy checks it statically.
-    with patch("harness.connectors.github.Github"):
+    with patch("senrah.connectors.github.Github"):
         connector: ConnectorProtocol = GitHubConnector(FAKE_TOKEN)
         # Verify all four protocol methods exist
         assert callable(connector.validate_credentials)
@@ -392,7 +392,7 @@ class TestRateLimitStatus:
         from datetime import datetime, timezone
 
         reset = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        with patch("harness.connectors.github.Github") as MockGithub:
+        with patch("senrah.connectors.github.Github") as MockGithub:
             core = MagicMock(remaining=4970, limit=5000, reset=reset)
             overview = MagicMock()
             overview.resources.core = core

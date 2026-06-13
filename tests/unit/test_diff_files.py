@@ -8,7 +8,7 @@ dedup, and empty input.
 
 from __future__ import annotations
 
-from harness.ingester.diff_files import parse_diff_files
+from senrah.ingester.diff_files import parse_diff_files
 
 MODIFY = """\
 diff --git a/src/app/main.py b/src/app/main.py

@@ -29,7 +29,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from harness.connectors.base import RateLimitStatus
+from senrah.connectors.base import RateLimitStatus
 
 FAKE_TOKEN = "ghp_fake_incremental_traversal_token_12345"
 UTC = timezone.utc
@@ -89,8 +89,8 @@ class TestBackDatingCorrectness:
         # updated-desc order as the API would return it
         ordered = [retouched, backdated, old]
 
-        with patch("harness.connectors.github.Github") as MockGithub:
-            from harness.connectors.github import GitHubConnector
+        with patch("senrah.connectors.github.Github") as MockGithub:
+            from senrah.connectors.github import GitHubConnector
 
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = ordered
@@ -228,7 +228,7 @@ class TestIncrementalEfficiency:
         page4 = [old(600, 5), old(599, 4)]
         api = fake_api([page1, page2, page3, page4])
 
-        from harness.connectors.github import GitHubConnector
+        from senrah.connectors.github import GitHubConnector
 
         conn = GitHubConnector(FAKE_TOKEN)
         results = list(conn.list_merged_prs("owner/repo", since=cursor_merged))
@@ -288,7 +288,7 @@ class TestIncrementalEfficiency:
         api = fake_api([page1, [old(800, 9), old(799, 8)],
                         [old(700, 7), old(699, 6)], [old(600, 5), old(599, 4)]])
 
-        from harness.connectors.github import GitHubConnector
+        from senrah.connectors.github import GitHubConnector
 
         conn = GitHubConnector(FAKE_TOKEN)
         results = list(conn.list_merged_prs("owner/repo", since=cursor_merged))
@@ -339,7 +339,7 @@ class TestRecentMergedMetaEfficiency:
         api = fake_api([page1, page2, [old(90, 9), old(89, 8)],
                         [old(80, 7), old(79, 6)]])
 
-        from harness.connectors.github import GitHubConnector
+        from senrah.connectors.github import GitHubConnector
 
         conn = GitHubConnector(FAKE_TOKEN)
         meta = conn.list_recent_merged_meta("owner/repo", n=3)
@@ -382,8 +382,8 @@ class TestScopeLowerBoundWindow:
         )
         ordered = [below_scope, in_scope]  # updated-desc
 
-        with patch("harness.connectors.github.Github") as MockGithub:
-            from harness.connectors.github import GitHubConnector
+        with patch("senrah.connectors.github.Github") as MockGithub:
+            from senrah.connectors.github import GitHubConnector
 
             mock_repo = MagicMock()
             mock_repo.get_pulls.return_value = ordered
@@ -410,8 +410,8 @@ class TestBotFilterCompletionCost:
     """
 
     def test_bot_costs_no_completion_get(self, fake_api) -> None:
-        from harness.connectors.github import GitHubConnector
-        from harness.ingester.ingest import Ingester
+        from senrah.connectors.github import GitHubConnector
+        from senrah.ingester.ingest import Ingester
 
         def merged(n: int, author: str) -> dict:
             d = datetime(2024, 5, (n % 27) + 1, tzinfo=UTC)
@@ -432,8 +432,8 @@ class TestBotFilterCompletionCost:
         )
 
         mock_conn = MagicMock()
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo, patch(
-            "harness.ingester.ingest.RepositoryRepo"
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo, patch(
+            "senrah.ingester.ingest.RepositoryRepo"
         ) as MockRepoRepo:
             # Probe runs BEFORE size(): a "missing" PR must reach size() (its
             # completion GET); were the probe to report present, size() would be

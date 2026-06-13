@@ -1,5 +1,5 @@
 """
-Unit tests for harness.config scope model and resolver (INGEST-04).
+Unit tests for senrah.config scope model and resolver (INGEST-04).
 
 Covers:
 - Scope dataclass creation
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.config import Scope, resolve_since, load_yaml_config, YamlConfig
+from senrah.config import Scope, resolve_since, load_yaml_config, YamlConfig
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ ingest:
     value: 50
 repositories: []
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         assert cfg.default_scope.mode == "last_n"
@@ -168,7 +168,7 @@ ingest:
   default_last_n: 100
 repositories: []
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         assert cfg.default_scope.mode == "last_n"
@@ -181,7 +181,7 @@ project:
   name: myproject
 repositories: []
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         assert cfg.default_scope.mode == "last_n"
@@ -201,7 +201,7 @@ repositories:
   - type: github
     name: owner/repo2
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         # Check that repository entries contain scope
@@ -228,7 +228,7 @@ ingest:
   inter_fetch_delay: 0.5
 repositories: []
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         assert "dependabot" in cfg.filters.stop_list
@@ -245,7 +245,7 @@ project:
   name: myproject
 repositories: []
 """
-        cfg_path = tmp_path / "harness.yaml"
+        cfg_path = tmp_path / "senrah.yaml"
         cfg_path.write_text(yaml_content, encoding="utf-8")
         cfg = load_yaml_config(cfg_path)
         assert cfg.filters.max_files == 100
@@ -253,12 +253,12 @@ repositories: []
         assert cfg.filters.rate_limit_floor == 100
         assert cfg.filters.inter_fetch_delay == 0.0
 
-    def test_existing_harness_yaml_example_back_compat(self) -> None:
-        """The repo's own harness.yaml.example (legacy default_last_n) still parses."""
+    def test_existing_senrah_yaml_example_back_compat(self) -> None:
+        """The repo's own senrah.yaml.example (legacy default_last_n) still parses."""
         repo_root = Path(__file__).parent.parent.parent
-        yaml_path = repo_root / "harness.yaml.example"
+        yaml_path = repo_root / "senrah.yaml.example"
         if not yaml_path.exists():
-            pytest.skip("harness.yaml.example not found")
+            pytest.skip("senrah.yaml.example not found")
         # Must not raise
         cfg = load_yaml_config(yaml_path)
         # Legacy default_last_n → synthesized Scope

@@ -18,7 +18,7 @@ import sys
 
 import pytest
 
-from harness.connectors.base import RateLimitStatus
+from senrah.connectors.base import RateLimitStatus
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +34,7 @@ class TestProactiveThrottle:
         # verifying the sleep call when remaining is below the floor.
         # Ingester.run calls connector.rate_limit_status() and sleeps if needed.
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable with throttle support")
 
@@ -67,7 +67,7 @@ class TestProactiveThrottle:
     def test_no_pause_when_above_floor(self) -> None:
         """When remaining >= floor, no throttle pause occurs."""
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable with throttle support")
 
@@ -81,7 +81,7 @@ class TestProactiveThrottle:
         mock_conn = MagicMock()
 
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
             ingester = Ingester(mock_conn)
 
             with patch("time.sleep") as mock_sleep:

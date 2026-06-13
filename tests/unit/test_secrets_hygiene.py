@@ -6,7 +6,7 @@ Verifies OPS-06 / T-01-01 / T-01-02 hygiene:
 - .env.example exists with the three required placeholder keys
 - .env.example contains NO token-shaped values (no real secrets)
 - load_yaml_config raises when a secret key appears in the YAML
-- harness.yaml.example matches the D-03 locked config shape
+- senrah.yaml.example matches the D-03 locked config shape
 """
 
 from __future__ import annotations
@@ -96,9 +96,9 @@ def test_dotenv_example_has_no_real_secrets():
 
 def test_load_yaml_config_rejects_secrets(tmp_path: Path):
     """load_yaml_config must raise ValueError if a secret key is in the YAML."""
-    from harness.config import load_yaml_config
+    from senrah.config import load_yaml_config
 
-    bad_yaml = tmp_path / "harness.yaml"
+    bad_yaml = tmp_path / "senrah.yaml"
     bad_yaml.write_text(
         "project:\n  name: test\ngithub_token: ghp_fake\n",
         encoding="utf-8",
@@ -109,9 +109,9 @@ def test_load_yaml_config_rejects_secrets(tmp_path: Path):
 
 def test_load_yaml_config_rejects_database_url(tmp_path: Path):
     """load_yaml_config must raise ValueError if DATABASE_URL is in the YAML."""
-    from harness.config import load_yaml_config
+    from senrah.config import load_yaml_config
 
-    bad_yaml = tmp_path / "harness.yaml"
+    bad_yaml = tmp_path / "senrah.yaml"
     bad_yaml.write_text(
         "project:\n  name: test\ndatabase_url: postgresql://u:p@localhost/db\n",
         encoding="utf-8",
@@ -122,9 +122,9 @@ def test_load_yaml_config_rejects_database_url(tmp_path: Path):
 
 def test_load_yaml_config_rejects_openai_api_key(tmp_path: Path):
     """load_yaml_config must raise ValueError if openai_api_key is in the YAML."""
-    from harness.config import load_yaml_config
+    from senrah.config import load_yaml_config
 
-    bad_yaml = tmp_path / "harness.yaml"
+    bad_yaml = tmp_path / "senrah.yaml"
     bad_yaml.write_text(
         "project:\n  name: test\nopenai_api_key: sk-fake\n",
         encoding="utf-8",
@@ -134,20 +134,20 @@ def test_load_yaml_config_rejects_openai_api_key(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# D-03: harness.yaml.example matches the locked config shape
+# D-03: senrah.yaml.example matches the locked config shape
 # ---------------------------------------------------------------------------
 
 
-def test_harness_yaml_example_exists():
-    """harness.yaml.example must exist in the repo root."""
-    assert (REPO_ROOT / "harness.yaml.example").exists(), "harness.yaml.example does not exist"
+def test_senrah_yaml_example_exists():
+    """senrah.yaml.example must exist in the repo root."""
+    assert (REPO_ROOT / "senrah.yaml.example").exists(), "senrah.yaml.example does not exist"
 
 
-def test_harness_yaml_example_d03_shape():
-    """harness.yaml.example must contain all D-03 locked keys and default values."""
-    from harness.config import load_yaml_config
+def test_senrah_yaml_example_d03_shape():
+    """senrah.yaml.example must contain all D-03 locked keys and default values."""
+    from senrah.config import load_yaml_config
 
-    path = REPO_ROOT / "harness.yaml.example"
+    path = REPO_ROOT / "senrah.yaml.example"
     cfg = load_yaml_config(path)
 
     assert cfg.project_name == "sample", (
@@ -177,8 +177,8 @@ def test_harness_yaml_example_d03_shape():
 
 def test_load_yaml_config_valid_returns_yaml_config():
     """load_yaml_config on the example file returns a YamlConfig instance."""
-    from harness.config import YamlConfig, load_yaml_config
+    from senrah.config import YamlConfig, load_yaml_config
 
-    path = REPO_ROOT / "harness.yaml.example"
+    path = REPO_ROOT / "senrah.yaml.example"
     cfg = load_yaml_config(path)
     assert isinstance(cfg, YamlConfig)

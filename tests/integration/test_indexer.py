@@ -22,13 +22,13 @@ import psycopg
 import pytest
 from pgvector.psycopg import register_vector
 
-from harness.config import EmbedConfig, YamlConfig
-from harness.db.models import PullRequest
-from harness.db.repos.pr import PRRepo
-from harness.db.repos.project import ProjectRepo
-from harness.db.repos.repository import RepositoryRepo
-from harness.db.repos.skill import SkillRepo
-from harness.indexer.index import Indexer
+from senrah.config import EmbedConfig, YamlConfig
+from senrah.db.models import PullRequest
+from senrah.db.repos.pr import PRRepo
+from senrah.db.repos.project import ProjectRepo
+from senrah.db.repos.repository import RepositoryRepo
+from senrah.db.repos.skill import SkillRepo
+from senrah.indexer.index import Indexer
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def seeded_repository(sync_conn: psycopg.Connection) -> tuple[int, int]:
     project_repo = ProjectRepo(sync_conn)
     repo_repo = RepositoryRepo(sync_conn)
 
-    from harness.db.models import Project, Repository
+    from senrah.db.models import Project, Repository
 
     project = project_repo.upsert(Project(name="test-indexer-project"))
     repo = repo_repo.upsert(
@@ -153,7 +153,7 @@ class TestIndexerRun:
 
         indexer = Indexer(sync_conn, embed_cfg)
 
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             count = asyncio.run(indexer.run(repository_id))
 
         assert count == len(seeded_prs), (
@@ -176,7 +176,7 @@ class TestIndexerRun:
 
         indexer = Indexer(sync_conn, embed_cfg)
 
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             asyncio.run(indexer.run(repository_id))
 
         # Fetch skills rows and verify embeddings
@@ -219,7 +219,7 @@ class TestIndexerRun:
 
         indexer = Indexer(sync_conn, embed_cfg)
 
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             asyncio.run(indexer.run(repository_id))
 
         rows = sync_conn.execute(
@@ -258,7 +258,7 @@ class TestIndexerRun:
         indexer = Indexer(sync_conn, embed_cfg)
 
         # First run
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             asyncio.run(indexer.run(repository_id))
 
         # Count after first run
@@ -273,7 +273,7 @@ class TestIndexerRun:
 
         # Second run вЂ” should be a no-op (all PRs already indexed)
         # Note: unindexed_prs returns nothing, so embed_texts won't be called
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             count_second = asyncio.run(indexer.run(repository_id))
 
         # Count after second run

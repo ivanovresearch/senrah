@@ -5,7 +5,7 @@ Usage: python eval/ab/score.py <pr_number> <arm>
 
 Compares the agent's edited tree (C:/Work/efcore-ab/runs/pr-<pr>-<arm>)
 against the pristine snapshot (C:/Work/efcore-ab/snapshots/pr-<pr>) and the
-REAL merged fix (diff + files_changed from the harness DB), and prints:
+REAL merged fix (diff + files_changed from the senrah DB), and prints:
 
 - (a) file_recall: |real fix files ∩ agent-touched files| / |real fix files|
 - (b) symbol_overlap: recall of "symbols" (C# type/member names seen in

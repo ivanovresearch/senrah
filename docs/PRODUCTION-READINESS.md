@@ -24,7 +24,7 @@ A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
   just mocks. 11 other integration tests fail, but only from a pre-existing
   **test-isolation defect** (session-scoped DB container, no per-test truncation —
   rows accumulate across tests); each passes in isolation. Unrelated to Phase 3.
-- **`harness repos`** runs against the live efcore DB and lists the repo + scope +
+- **`senrah repos`** runs against the live efcore DB and lists the repo + scope +
   (blank) op-state. → OPS-02 validated on real data.
 
 ## Real-infra findings (fix before relying on production ingest)
@@ -38,7 +38,7 @@ A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
   but the alembic CLI does not load `.env` (only pydantic EnvSettings does), so
   `DATABASE_URL` must be exported in the shell before running alembic. Document this
   (or add dotenv loading to `alembic/env.py`).
-- **`harness repos` cosmetic:** a repo row that exists but never advanced the cursor
+- **`senrah repos` cosmetic:** a repo row that exists but never advanced the cursor
   shows "-" for the cursor cell, not "(never run)" (which only triggers when there
   is no repositories row at all). Consider showing "(never run)" when
   cursor_merged_at is NULL.
@@ -46,7 +46,7 @@ A `[x]` for Phase 3 in `.planning/ROADMAP.md` means "all plans have a SUMMARY",
 ## Gates (in priority order)
 
 ### 1. Resumable incremental ingest — DATA-LOSS · **CLOSED (live-validated 2026-06-10)**
-A real interrupted-and-resumed `harness ingest` against efcore **lost 13 of 27
+A real interrupted-and-resumed `senrah ingest` against efcore **lost 13 of 27
 window PRs** (silent, permanent; proven 2026-06-09). Resume was NOT correct and
 gated Phase 4. Two preconditions were found and fixed first; the third was the
 real blocker:
@@ -85,7 +85,7 @@ since_date / period) — and its cost is two new classes of silent state-bug
 (bimodal reset-on-completion + freeze-on-error) of the same family as A/B/C. So:
 
 - **Cursor semantics (now, one line):** `cursor_merged_at` is a **diagnostic
-  high-water mark** surfaced by `harness repos`; it bounds **nothing**. Resume
+  high-water mark** surfaced by `senrah repos`; it bounds **nothing**. Resume
   correctness is owned entirely by re-scanning the configured scope window every
   run + skipping PRs already present in `pull_requests`. (Reading the cursor as a
   "processed-up-to-here" boundary was the root of C; nothing in the read path may.)
@@ -126,10 +126,10 @@ dotnet/efcore on a fresh DB (scope `since_date 2026-06-03`, window = 23 PRs):
 - Filters live too: `filtered 20 bot / 1 giant` on both runs (also a live data
   point for gate #3's stderr observability line).
 
-### 2. `harness init` live flow + YAML structure preservation
+### 2. `senrah init` live flow + YAML structure preservation
 With a live `GITHUB_TOKEN` and a real repo: token validates (token-free
-accept/reject), the entry is merged into `harness.yaml` **without** destroying
-comments or the `embed:`/`search:`/`mcp:` blocks, and `harness repos` reflects it.
+accept/reject), the entry is merged into `senrah.yaml` **without** destroying
+comments or the `embed:`/`search:`/`mcp:` blocks, and `senrah repos` reflects it.
 The ruamel round-trip is unit-tested on synthetic YAML only.
 
 ### 3. Bot/giant filtering observability on a real repo

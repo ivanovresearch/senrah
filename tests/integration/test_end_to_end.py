@@ -11,7 +11,7 @@ This test exercises the full path:
 Uses:
 - pg_dsn_migrated fixture (testcontainers pgvector + alembic upgrade head)
 - fake_embedder fixture (deterministic 1536-dim unit vectors, no OpenAI)
-- patch("harness.indexer.index.embed_texts") to inject fake embedder
+- patch("senrah.indexer.index.embed_texts") to inject fake embedder
 
 NO real GitHub, NO real OpenAI, NO real GITHUB_TOKEN / OPENAI_API_KEY.
 T-04-05: fake embedder used; key not required.
@@ -33,14 +33,14 @@ import psycopg
 import pytest
 from pgvector.psycopg import register_vector, register_vector_async
 
-from harness.config import EmbedConfig, SearchConfig, YamlConfig
-from harness.db.models import PullRequest
-from harness.db.repos.pr import PRRepo
-from harness.db.repos.project import ProjectRepo
-from harness.db.repos.repository import RepositoryRepo
-from harness.db.repos.skill import SearchResult, SkillRepo
-from harness.indexer.index import Indexer
-from harness.scoring import composite_score
+from senrah.config import EmbedConfig, SearchConfig, YamlConfig
+from senrah.db.models import PullRequest
+from senrah.db.repos.pr import PRRepo
+from senrah.db.repos.project import ProjectRepo
+from senrah.db.repos.repository import RepositoryRepo
+from senrah.db.repos.skill import SearchResult, SkillRepo
+from senrah.indexer.index import Indexer
+from senrah.scoring import composite_score
 
 # ---------------------------------------------------------------------------
 # Fixtures: seeded DB state for E2E tests
@@ -63,7 +63,7 @@ def e2e_repository_ids(sync_conn_e2e: psycopg.Connection):
     project_repo = ProjectRepo(sync_conn_e2e)
     repo_repo = RepositoryRepo(sync_conn_e2e)
 
-    from harness.db.models import Project, Repository
+    from senrah.db.models import Project, Repository
 
     project = project_repo.upsert(Project(name="e2e-test-project"))
     repo = repo_repo.upsert(
@@ -160,7 +160,7 @@ class TestEndToEndSearch:
             version="v1-e2e",
         )
         indexer = Indexer(sync_conn_e2e, embed_cfg)
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             count = asyncio.run(indexer.run(repository_id))
 
         assert count == 3, f"Expected 3 PRs indexed, got {count}"
@@ -168,7 +168,7 @@ class TestEndToEndSearch:
         # Build the query: we use the EXACT problem text of PR 201 so the fake_embedder
         # produces the SAME vector as was stored for PR 201's problem_embedding.
         # With cosine similarity, this should yield similarity = 1.0 for PR 201.
-        from harness.indexer.embedder import build_problem_text
+        from senrah.indexer.embedder import build_problem_text
 
         target_pr_title = "Fix async cancellation token propagation in runtime"
         target_pr_body = "Closes #101. The async runtime was not propagating cancellation tokens correctly."
@@ -220,7 +220,7 @@ class TestEndToEndSearch:
             version="v1-e2e-threshold",
         )
         indexer = Indexer(sync_conn_e2e, embed_cfg)
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             asyncio.run(indexer.run(repository_id))
 
         # Use an arbitrary query vector
@@ -285,7 +285,7 @@ class TestEndToEndSearch:
             version="v1-e2e-fields",
         )
         indexer = Indexer(sync_conn_e2e, embed_cfg)
-        with patch("harness.indexer.index.embed_texts", new=fake_embed_texts):
+        with patch("senrah.indexer.index.embed_texts", new=fake_embed_texts):
             asyncio.run(indexer.run(repository_id))
 
         query_vec = fake_embedder("async cancellation")
@@ -338,8 +338,8 @@ class TestSearchOutputFormatting:
 
     def test_non_tty_output_has_no_ansi(self, capsys):
         """Output captured by capsys (non-TTY) must not contain ANSI escape codes (D-13)."""
-        from harness.cli.search import _print_result_block
-        from harness.db.repos.skill import SearchResult
+        from senrah.cli.search import _print_result_block
+        from senrah.db.repos.skill import SearchResult
         import datetime
 
         result = SearchResult(
@@ -374,13 +374,13 @@ class TestSearchOutputFormatting:
         """NO_COLOR environment variable disables ANSI color output (D-13)."""
         monkeypatch.setenv("NO_COLOR", "1")
 
-        from harness.cli.search import _use_color
+        from senrah.cli.search import _use_color
         assert not _use_color(), "NO_COLOR should disable color"
 
     def test_below_threshold_block_format(self, capsys):
         """[BELOW THRESHOLD score=X.XX] prefix appears when below_threshold=True (D-11)."""
-        from harness.cli.search import _print_result_block
-        from harness.db.repos.skill import SearchResult
+        from senrah.cli.search import _print_result_block
+        from senrah.db.repos.skill import SearchResult
         import datetime
 
         result = SearchResult(
@@ -406,8 +406,8 @@ class TestSearchOutputFormatting:
 
     def test_files_capped_at_five(self, capsys):
         """Files list is capped at 5 visible + '+K more' suffix (D-12)."""
-        from harness.cli.search import _print_result_block
-        from harness.db.repos.skill import SearchResult
+        from senrah.cli.search import _print_result_block
+        from senrah.db.repos.skill import SearchResult
         import datetime
 
         many_files = [f"src/file{i}.py" for i in range(10)]

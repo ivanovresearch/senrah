@@ -20,7 +20,7 @@ import pytest
 import respx
 import httpx
 
-from harness.connectors.base import RawPR, RateLimitStatus
+from senrah.connectors.base import RawPR, RateLimitStatus
 
 
 DIFF_URL = "https://github.com/owner/repo/pull/{}.diff"
@@ -61,7 +61,7 @@ class TestIngestFiltering:
     def test_giant_pr_skipped_before_diff_fetch(self) -> None:
         """A giant PR (>100 files or >5000 lines) is skipped before diff fetch."""
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable with filtering support")
 
@@ -86,12 +86,12 @@ class TestIngestFiltering:
 
         original_fetch = getattr(mock_connector, "_fetch_diff", None)
 
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo:
             MockPRRepo.return_value.upsert.return_value = 1
             # Probe runs before size()/giant: report "missing" so the giant filter
             # path is actually exercised (a truthy probe would skip it as present).
             MockPRRepo.return_value.exists.return_value = False
-            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+            with patch("senrah.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
                 mock_repo_instance.get_op_state.return_value = None
@@ -120,7 +120,7 @@ class TestIngestFiltering:
     def test_bot_pr_skipped(self) -> None:
         """A bot PR is skipped (not upserted)."""
         try:
-            from harness.ingester.ingest import Ingester
+            from senrah.ingester.ingest import Ingester
         except ImportError:
             pytest.skip("Ingester not yet importable with filtering support")
 
@@ -137,8 +137,8 @@ class TestIngestFiltering:
         mock_conn = MagicMock()
         ingester = Ingester(mock_conn)
 
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
-            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo:
+            with patch("senrah.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
                 mock_repo_instance.get_op_state.return_value = None
@@ -167,7 +167,7 @@ class TestAutomationTitleFilter:
     """Automation-titled PRs (non-bot authors) are excluded via config patterns."""
 
     def test_predicate_matches_configured_patterns(self) -> None:
-        from harness.ingester.filters import is_automation_title
+        from senrah.ingester.filters import is_automation_title
 
         patterns = (
             "source code updates from dotnet/dotnet",
@@ -184,9 +184,9 @@ class TestAutomationTitleFilter:
         assert not is_automation_title("Merging internal commits for release/8.0", ())
 
     def test_config_parses_title_stop_patterns(self, tmp_path) -> None:
-        from harness.config import load_yaml_config
+        from senrah.config import load_yaml_config
 
-        cfg_file = tmp_path / "harness.yaml"
+        cfg_file = tmp_path / "senrah.yaml"
         cfg_file.write_text(
             "project:\n  name: p\n"
             "repositories:\n  - type: github\n    name: o/r\n"
@@ -203,8 +203,8 @@ class TestAutomationTitleFilter:
     def test_automation_titled_pr_skipped_before_probe_and_diff(self) -> None:
         """An automation-titled PR by a human author is excluded: no probe,
         no size() completion GET, no diff fetch, no upsert."""
-        from harness.config import IngestFilterConfig
-        from harness.ingester.ingest import Ingester
+        from senrah.config import IngestFilterConfig
+        from senrah.ingester.ingest import Ingester
 
         pr = _make_raw_pr(1, author="vseanreesermsft")
         pr = RawPR(**{**pr.__dict__, "title": "Merging internal commits for release/8.0"})
@@ -223,8 +223,8 @@ class TestAutomationTitleFilter:
             title_stop_patterns=("merging internal commits",)
         )
 
-        with patch("harness.ingester.ingest.PRRepo") as MockPRRepo:
-            with patch("harness.ingester.ingest.RepositoryRepo") as MockRepoRepo:
+        with patch("senrah.ingester.ingest.PRRepo") as MockPRRepo:
+            with patch("senrah.ingester.ingest.RepositoryRepo") as MockRepoRepo:
                 mock_repo_instance = MockRepoRepo.return_value
                 mock_repo_instance.upsert.return_value = MagicMock(id=1)
                 mock_repo_instance.get_op_state.return_value = None
