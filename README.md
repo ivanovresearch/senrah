@@ -116,3 +116,7 @@ pytest tests/unit/ -x -q
 # Full suite (requires Docker for pgvector container):
 pytest tests/ -x -q
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
