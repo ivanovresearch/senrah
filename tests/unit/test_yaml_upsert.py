@@ -168,3 +168,47 @@ repositories: []
         cfg = load_yaml_config(yaml_path)
         names = [r["name"] for r in cfg.repositories]
         assert names.count("owner/repo") == 1
+
+    def test_preserves_standalone_comment_and_list_indentation(self, tmp_path) -> None:
+        """FIX-01: a standalone comment above the list and block-list indentation
+        both survive the round-trip when a new repo is upserted."""
+        commented_yaml = """\
+# senrah config — keep this comment
+project:
+  name: myproject
+
+# repos to ingest  (standalone comment — must survive)
+repositories:
+  - type: github
+    name: existing/repo  # inline comment — must survive
+    scope:
+      mode: last_n
+      value: 50
+
+embed:
+  model: text-embedding-3-small
+  version: v1
+"""
+        yaml_path = tmp_path / "senrah.yaml"
+        yaml_path.write_text(commented_yaml, encoding="utf-8")
+
+        upsert_repo_entry(
+            yaml_path,
+            repo_name="owner/added-repo",
+            repo_type="github",
+            scope=Scope(mode="last_n", value=10),
+        )
+
+        raw = yaml_path.read_text(encoding="utf-8")
+
+        # Standalone full-line comment above repositories survives verbatim.
+        assert "# repos to ingest  (standalone comment — must survive)" in raw
+        # Inline comment on a kept sibling line survives.
+        assert "# inline comment — must survive" in raw
+        # Block list items stay indented under their key (dash not at column 0).
+        assert "\n  - type: github" in raw or "\n  - name:" in raw
+        # ruamel's default column-0 dash must NOT be used.
+        assert "\n- type: github" not in raw
+        # The new repo was still added.
+        cfg = load_yaml_config(yaml_path)
+        assert "owner/added-repo" in [r["name"] for r in cfg.repositories]

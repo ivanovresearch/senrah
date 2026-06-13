@@ -13,13 +13,20 @@ Senrah indexes the merged-PR history of a codebase and serves it to AI coding ag
 
 ### Setup
 
-1. **Start the database:**
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/Vladimir1Ivanov/senrah.git
+   cd senrah
+   ```
+
+2. **Start the database:**
 
    ```bash
    docker compose up -d
    ```
 
-2. **Install senrah:**
+3. **Install senrah:**
 
    ```bash
    python -m venv .venv
@@ -27,33 +34,69 @@ Senrah indexes the merged-PR history of a codebase and serves it to AI coding ag
    pip install -e ".[dev]"
    ```
 
-3. **Configure secrets** (copy `.env.example` → `.env`, fill in real values — never commit `.env`):
+4. **Configure secrets** (copy `.env.example` → `.env`, fill in real values — never commit `.env`):
 
    ```bash
    cp .env.example .env
    # Edit .env with your real DATABASE_URL, GITHUB_TOKEN, OPENAI_API_KEY
    ```
 
-4. **Configure your project** (copy `senrah.yaml.example` → `senrah.yaml`):
+5. **Configure your project** (copy `senrah.yaml.example` → `senrah.yaml`):
 
    ```bash
    cp senrah.yaml.example senrah.yaml
    # Edit senrah.yaml to point at your repos (no secrets here)
    ```
 
-5. **Run migrations:**
+6. **Run migrations:**
 
    ```bash
    alembic upgrade head
    ```
 
-6. **Ingest, index, and search:**
+7. **Ingest, index, and search:**
 
    ```bash
    senrah ingest
    senrah index
    senrah search "fix for cursor pagination in async resolver"
    ```
+
+## Use with an AI agent (MCP)
+
+Senrah serves your indexed PR history to an AI coding agent over the Model
+Context Protocol. `senrah serve` defaults to **stdio** transport, so the agent
+launches it as a subprocess. The server exposes a single read-only tool,
+`search_prs_v1`; it queries the database only and never contacts GitHub at read
+time.
+
+Add senrah to your MCP client config (e.g. Claude Code / Codex). The `env`
+values below are **placeholders** — substitute your own and never commit real
+secrets:
+
+```json
+{
+  "mcpServers": {
+    "senrah": {
+      "command": "senrah",
+      "args": ["serve"],
+      "env": {
+        "DATABASE_URL": "postgresql://USER:PASSWORD@HOST:5432/DB",
+        "OPENAI_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+`OPENAI_API_KEY` is required because the server embeds the incoming query;
+`GITHUB_TOKEN` is **not** needed at serve time (the server is read-only over the
+database). Point `DATABASE_URL` at the same database you ingested and indexed
+into.
+
+For a remote setup, run `senrah serve --transport network` instead — a
+streamable-HTTP server that binds `127.0.0.1` by default (use `--host 0.0.0.0`
+only when you intentionally expose it to a shared network).
 
 ## Required Token Scopes
 

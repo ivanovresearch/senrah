@@ -418,6 +418,12 @@ def upsert_repo_entry(
 
     yaml_rt = RuamelYAML(typ="rt")
     yaml_rt.preserve_quotes = True
+    # FIX-01: keep block sequences indented under their key (`  - item`) instead
+    # of ruamel's default column-0 dash, which restyled the existing file and
+    # dropped a standalone comment near the edited list. All edits below mutate
+    # the loaded CommentedMap/CommentedSeq in place — never reassign to a plain
+    # list/dict, which is what strips comments.
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
 
     # Load existing file, or start with an empty mapping
     if path.exists():
