@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request: {}
+
+# Fork-PR-safe: read-only token, no secrets referenced anywhere in this file.
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest tests/unit -q
+
+  integration:
+    # testcontainers provisions pgvector/pgvector:pg17 itself using the runner's
+    # preinstalled Docker — no `services:` block and no secrets needed (the
+    # integration + E2E suites run on the fake embedder with dummy credentials).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest tests -q
+
+  gitleaks:
+    # Server-side counterpart to .githooks/pre-commit — fails closed on a finding.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
