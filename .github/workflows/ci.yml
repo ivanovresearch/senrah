@@ -13,8 +13,8 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
@@ -26,8 +26,8 @@ jobs:
     # integration + E2E suites run on the fake embedder with dummy credentials).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
@@ -39,7 +39,7 @@ jobs:
     # requires a paid GITLEAKS_LICENSE secret on org-owned repos).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install gitleaks
