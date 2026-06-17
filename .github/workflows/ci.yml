@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request: {}
 
 # Fork-PR-safe: read-only token, no secrets referenced anywhere in this file.
