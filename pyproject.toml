@@ -34,6 +34,11 @@ dependencies = [
     "ruamel.yaml>=0.18,<0.20",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ivanovresearch/senrah"
+Repository = "https://github.com/ivanovresearch/senrah"
+Changelog = "https://github.com/ivanovresearch/senrah/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3,<10",

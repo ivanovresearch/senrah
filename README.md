@@ -1,6 +1,6 @@
 # Senrah
 
-[![CI](https://github.com/Vladimir1Ivanov/senrah/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladimir1Ivanov/senrah/actions/workflows/ci.yml)
+[![CI](https://github.com/ivanovresearch/senrah/actions/workflows/ci.yml/badge.svg)](https://github.com/ivanovresearch/senrah/actions/workflows/ci.yml)
 
 Senrah indexes the merged-PR history of a codebase and serves it to AI coding agents over MCP. When an agent works on a task, it can retrieve real precedents — how similar problems were actually solved in *this* codebase — instead of guessing.
 
@@ -16,7 +16,7 @@ Senrah indexes the merged-PR history of a codebase and serves it to AI coding ag
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/Vladimir1Ivanov/senrah.git
+   git clone https://github.com/ivanovresearch/senrah.git
    cd senrah
    ```
 

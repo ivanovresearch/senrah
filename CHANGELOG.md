@@ -46,5 +46,5 @@ coding agents over MCP.
 - **Operations**: `index --reindex`, configurable tunables via `senrah.yaml`,
   status/observability surface, and a gitleaks pre-commit secret-scan hook.
 
-[1.1.0]: https://github.com/Vladimir1Ivanov/senrah/releases/tag/v1.1.0
-[1.0.0]: https://github.com/Vladimir1Ivanov/senrah/releases/tag/v1.0.0
+[1.1.0]: https://github.com/ivanovresearch/senrah/releases/tag/v1.1.0
+[1.0.0]: https://github.com/ivanovresearch/senrah/releases/tag/v1.0.0

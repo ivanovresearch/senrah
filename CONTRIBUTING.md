@@ -6,7 +6,7 @@ running the tests, and the secret-scan hook.
 ## Dev setup
 
 ```bash
-git clone https://github.com/Vladimir1Ivanov/senrah.git
+git clone https://github.com/ivanovresearch/senrah.git
 cd senrah
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate

@@ -65,7 +65,7 @@ https://test.pypi.org, add a **pending publisher** (Account → Publishing) with
 | Field             | Value                        |
 |-------------------|------------------------------|
 | PyPI Project Name | `senrah`                     |
-| Owner             | `Vladimir1Ivanov`            |
+| Owner             | `ivanovresearch`             |
 | Repository name   | `senrah`                     |
 | Workflow name     | `release.yml`                |
 | Environment name  | `testpypi`                   |
