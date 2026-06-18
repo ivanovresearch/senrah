@@ -2,10 +2,12 @@ name: Release
 
 # Tag-only trigger: a maintainer pushing `vX.Y.Z` cuts a release. Never runs on
 # pull_request / pull_request_target — untrusted code cannot trigger a publish.
+# Pattern is three-part semver (v0.1.0) so two-part milestone tags (v1.1) do not
+# trigger a publish.
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
 
 # Default least-privilege; the publish job opts into id-token below.
 permissions:
