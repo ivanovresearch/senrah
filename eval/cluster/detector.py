@@ -83,14 +83,21 @@ def normalize_diff(patch: str) -> str:
     return "\n".join(kept)
 
 
-def diff_similarity(a: str, b: str) -> float:
+def diff_similarity(a: str, b: str, max_chars: int = 50_000) -> float:
     """Return difflib ratio of normalized diffs (0.0–1.0).
 
     D-02: this value alone NEVER triggers a union — it only marks a CANDIDATE
     edge that requires corroboration.
+
+    Args:
+        a, b: Raw patch strings.
+        max_chars: Truncate normalized diffs to this many characters before
+                   comparing. Prevents O(n*m) slowdown on very large diffs.
+                   At 50K chars the comparison is still accurate for backport
+                   detection (identical patches share 99%+ chars at the start).
     """
-    na = normalize_diff(a)
-    nb = normalize_diff(b)
+    na = normalize_diff(a)[:max_chars]
+    nb = normalize_diff(b)[:max_chars]
     return difflib.SequenceMatcher(None, na, nb).ratio()
 
 
@@ -192,46 +199,74 @@ def build_edges(
 
     # Step 3: author + close-in-time across release branches (weak corroborating).
     # Only pair PRs whose merged_at values differ by <= _TIME_WINDOW AND have the same author.
-    # This is a weak signal; requires diff-similarity corroboration to union alone is
-    # handled in the merge rule (it's added to corroborating set here, to be combined
-    # with diff similarity in the diff-sim path).
+    # Optimization: group by author, then sort by merged_at and slide a time window.
+    # This is O(n log n) instead of O(n²).
     author_time_pairs: set[tuple[int, int]] = set()
-    for i in range(n):
-        for j in range(i + 1, n):
-            ri, rj = rows[i], rows[j]
-            if ri["author"] != rj["author"]:
+
+    # Group rows by author.
+    by_author: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        author = r.get("author") or ""
+        by_author.setdefault(author, []).append(r)
+
+    for author_rows in by_author.values():
+        if len(author_rows) < 2:
+            continue
+        # Normalize merged_at and sort by time.
+        timed: list[tuple[datetime, dict[str, Any]]] = []
+        for r in author_rows:
+            t = r.get("merged_at")
+            if t is None:
                 continue
-            ti = ri.get("merged_at")
-            tj = rj.get("merged_at")
-            if ti is None or tj is None:
-                continue
-            # Normalize to aware datetime if needed.
-            if isinstance(ti, str):
-                ti = datetime.fromisoformat(ti)
-            if isinstance(tj, str):
-                tj = datetime.fromisoformat(tj)
-            if abs(ti - tj) <= _TIME_WINDOW:
+            if isinstance(t, str):
+                t = datetime.fromisoformat(t)
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            timed.append((t, r))
+        timed.sort(key=lambda x: x[0])
+
+        # Sliding window: for each PR, look ahead while within _TIME_WINDOW.
+        for i in range(len(timed)):
+            ti, ri = timed[i]
+            for j in range(i + 1, len(timed)):
+                tj, rj = timed[j]
+                if tj - ti > _TIME_WINDOW:
+                    break
                 pair = (min(ri["number"], rj["number"]), max(ri["number"], rj["number"]))
                 author_time_pairs.add(pair)
 
     # Step 4: diff-similarity scan (files_changed pre-filter, D-02).
+    # Optimization: build inverted index file→PRs to find candidate pairs in O(n×avg_files).
     diff_similar_pairs: dict[tuple[int, int], float] = {}
-    for i in range(n):
-        for j in range(i + 1, n):
-            ri, rj = rows[i], rows[j]
-            # files_changed pre-filter: only compute similarity for pairs sharing ≥1 file.
-            fi = set(ri.get("files_changed") or [])
-            fj = set(rj.get("files_changed") or [])
-            if not (fi & fj):
-                continue
-            sim = diff_similarity(ri.get("diff") or "", rj.get("diff") or "")
-            if sim >= sim_threshold:
-                pair = (min(ri["number"], rj["number"]), max(ri["number"], rj["number"]))
-                diff_similar_pairs[pair] = sim
+    file_to_prs: dict[str, list[int]] = {}
+    for r in rows:
+        for f in (r.get("files_changed") or []):
+            file_to_prs.setdefault(f, []).append(r["number"])
+
+    candidate_pairs: set[tuple[int, int]] = set()
+    for prs in file_to_prs.values():
+        if len(prs) < 2:
+            continue
+        for i in range(len(prs)):
+            for j in range(i + 1, len(prs)):
+                pair = (min(prs[i], prs[j]), max(prs[i], prs[j]))
+                candidate_pairs.add(pair)
+
+    for pair in candidate_pairs:
+        a, b = pair
+        ra, rb = by_number[a], by_number[b]
+        sim = diff_similarity(ra.get("diff") or "", rb.get("diff") or "")
+        if sim >= sim_threshold:
+            diff_similar_pairs[pair] = sim
 
     # Step 5: classify edges.
     corroborated_edges: list[Edge] = []
     candidate_only_edges: list[Edge] = []
+
+    # Pre-build explicit backport pair set for O(1) lookup.
+    explicit_backport_set: set[tuple[int, int]] = {
+        (min(a, b), max(a, b)) for a, b in explicit_backport
+    }
 
     # First, emit corroborated edges from signal sets (not diff-similarity).
     for pair in corroborated_pairs:
@@ -242,7 +277,7 @@ def build_edges(
         norm_b = _normalize_title(by_number[b]["title"] or "")
         if norm_a == norm_b:
             via_parts.append("title-convention")
-        if (a, b) in [(min(x, y), max(x, y)) for x, y in explicit_backport]:
+        if pair in explicit_backport_set:
             via_parts.append("explicit-backport-ref")
         li_a = by_number[a].get("linked_issue")
         li_b = by_number[b].get("linked_issue")
