@@ -27,3 +27,7 @@ tools/
 # MCP heartbeat/status file
 senrah-search.log
 senrah-mcp-status.json
+
+# Eval cluster: cached GitHub commit-message responses (public PR data, not secrets;
+# gitignored because they are generated/runtime output, not source artifacts).
+eval/cluster/.commitcache/
