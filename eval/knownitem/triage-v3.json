@@ -4,151 +4,151 @@
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37397,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37397 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 36708,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 38322,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=38322 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 36653,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37781,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37781 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 36723,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37262,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37262 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 36757,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37956,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37956 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37197,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37690,
-    "final_tag": null,
-    "note": "v2 manifest already had relevant_prs=[37197,37198] (cluster known), but neither ranked in top-10"
+    "final_tag": "real-fail",
+    "note": "v2 manifest already had relevant_prs=[37197,37198] (cluster known), but neither ranked in top-10; top1=37690 unrelated; real miss"
   },
   {
     "target_pr": 37194,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37975,
-    "final_tag": null,
-    "note": "cluster=[37194,37359] via linked-issue; top1=37975 is not in this cluster"
+    "final_tag": "real-fail",
+    "note": "cluster=[37194,37359] via linked-issue; top1=37975 is not in this cluster; no positive evidence 37359 ranked in top-10 (frozen store has only top1); conservative no-silent-number-tuning -> real-fail"
   },
   {
     "target_pr": 37207,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37949,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37949 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37362,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37397,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37397 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37350,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37975,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37975 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37425,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37284,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "singleton cluster; no other cluster member possible; top1=37284 unrelated; real-fail"
   },
   {
     "target_pr": 37390,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37257,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37257 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37463,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37443,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37443 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37474,
     "stage1_reclassified": true,
     "stage1_via_cluster": [37474, 37805],
     "top1_in_v2": 37805,
-    "final_tag": null,
-    "note": "top1=37805 is a cluster member of target 37474; v2 manifest lacked this cluster edge"
+    "final_tag": "duplicate",
+    "note": "top1=37805 is a cluster member of target 37474; v2 manifest lacked this cluster edge; backport of its own target -> duplicate"
   },
   {
     "target_pr": 37392,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37788,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37788 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37552,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37958,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37958 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37762,
     "stage1_reclassified": true,
     "stage1_via_cluster": [37703, 37762],
     "top1_in_v2": 37703,
-    "final_tag": null,
-    "note": "top1=37703 is a cluster member of target 37762; v2 manifest lacked this cluster edge"
+    "final_tag": "duplicate",
+    "note": "top1=37703 is a cluster member of target 37762; v2 manifest lacked this cluster edge; backport of its own target -> duplicate"
   },
   {
     "target_pr": 37783,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37690,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37690 unrelated; genuine retrieval failure"
   },
   {
     "target_pr": 37934,
     "stage1_reclassified": false,
     "stage1_via_cluster": null,
     "top1_in_v2": 37601,
-    "final_tag": null,
-    "note": ""
+    "final_tag": "real-fail",
+    "note": "top1=37601 unrelated; genuine retrieval failure"
   }
 ]
