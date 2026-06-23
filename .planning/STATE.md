@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Corpus Depth
 status: executing
-last_updated: "2026-06-23T12:28:42.865Z"
-last_activity: 2026-06-23
+last_updated: "2026-06-24T00:00:00.000Z"
+last_activity: 2026-06-24
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -34,9 +34,9 @@ See: .planning/PROJECT.md (updated 2026-06-22 after v1.2 scoping)
 ## Current Position
 
 Phase: 09 (eval-v3-trustworthy-deduped-scale) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
-Last activity: 2026-06-23
+Last activity: 2026-06-24
 
 ## Performance Metrics
 
@@ -44,7 +44,7 @@ Last activity: 2026-06-23
 |--------|-------|
 | Phases complete | 0 / 3 (v1.2) |
 | Requirements delivered | 1 / 13 (v1.2) — JUDGE-01 |
-| Plans complete | 2 / 4 (Phase 09) |
+| Plans complete | 3 / 4 (Phase 09) |
 | Unit tests | 302 passing |
 
 ---
@@ -114,6 +114,8 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 | _binary_collapse frozenset must include "relevant" (already-binary) to avoid double-collapse | Test fixtures use already-binary "relevant" grade; excluding it collapses all relevant pairs to "irrelevant" -> kappa always 1.0 | 9 |
 | grade_fn resolved via sys.modules at _score_gold call time to support monkeypatch | Direct function reference at call site bypasses monkeypatch; sys.modules lookup at call time enables test stubs without dependency injection | 9 |
 | anthropic imported lazily in grade_pair (not at module top) | eval.judge.judge must be importable in tests without pip install senrah[eval]; deferred import is the idiomatic pattern | 9 |
+| Per-cluster deduplication: hit on any cluster member = one cluster hit; distractors per-cluster (EVAL-02 / D-08) | Divergence fixture demonstrates per-PR=2 vs per-cluster=1 for two cluster members in top-k | 9 |
+| Stage-2 triage final: 2 duplicate (Stage-1 auto), 17 real-fail, 0 label-error (EVAL-03 / D-09) | Conservative stance on 37194 (no positive evidence 37359 ranked, frozen store has only top1) under D-11 no-silent-number-tuning | 9 |
 
 ### Architectural Constraints (do not violate)
 
@@ -138,13 +140,13 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 
 ### Last Session
 
-- **Date:** 2026-06-23
-- **Action:** Executed 09-04-PLAN.md (JUDGE-01: Cohen's kappa, judge harness, gold.jsonl, eval extra, isolation guard).
-- **Outcome:** eval/judge/ created with kappa.py (pure stdlib), judge.py (Sonnet->Opus escalation ladder), gold.jsonl (60-row stratified gold set). pyproject.toml eval extra added. Import-graph guard test added. All 302 unit tests pass. JUDGE-01 marked complete.
+- **Date:** 2026-06-24
+- **Action:** Executed 09-02-PLAN.md to completion (EVAL-02 grouping module + EVAL-03 two-stage miss triage with human Stage-2 checkpoint resolved).
+- **Outcome:** eval/cluster/grouping.py (pure per-cluster dedup), triage-v3.json (all 19 rows tagged: 2 duplicate via Stage-1, 17 real-fail via Stage-2 human), triage-v3.md written. 25 tests pass. EVAL-02 and EVAL-03 complete.
 
 ### Resumption Prompt
 
-> Phase 09 Plan 04 complete (JUDGE-01). Plans 02 and 03 remain in Phase 09. Next: execute 09-02 (corpus-level cluster grouping) and 09-03 (19-miss triage + re-frozen eval scale). Phase 09 must complete before Phase 10 (depth experiment).
+> Phase 09 Plan 02 complete (EVAL-02, EVAL-03). Plan 03 remains in Phase 09. Next: execute 09-03 (re-frozen v3 known-item deduped manifest + run_eval re-run -> results-v3-deduped.json). Phase 09 must complete before Phase 10 (depth experiment).
 
 ---
 

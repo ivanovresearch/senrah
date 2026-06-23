@@ -55,7 +55,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 **Plans**: 4 plans
   - [x] 09-01-PLAN.md — EVAL-01: backport/cherry-pick cluster detector (union-find over corroborated edges, diff-sim never merges alone, under-merge bias) → frozen hash-pinned clusters.json [wave 1]
   - [x] 09-04-PLAN.md — JUDGE-01: blind judge calibration (stdlib Cohen's κ, stratified gold.jsonl, Sonnet 4.6→Opus 4.8 escalation ladder, eval extra + import-graph isolation guard) [wave 1, parallel]
-  - [ ] 09-02-PLAN.md — EVAL-02 + EVAL-03: reusable per-cluster grouping module (divergence fixture) + two-stage 19-miss triage (Stage-1 mechanical, Stage-2 human, no LLM) [wave 2]
+  - [x] 09-02-PLAN.md — EVAL-02 + EVAL-03: reusable per-cluster grouping module (divergence fixture) + two-stage 19-miss triage (Stage-1 mechanical, Stage-2 human, no LLM) [wave 2]
   - [ ] 09-03-PLAN.md — EVAL-04: re-frozen v3-knownitem-deduped manifest (cluster-sourced relevant_prs, recorded corrections, reused v2 query text) + run_eval re-run → results-v3-deduped.json [wave 3]
 
 ### Phase 10: Temporal-Holdout Harness + Multi-Year Ingest
