@@ -83,6 +83,19 @@ def normalize_diff(patch: str) -> str:
     return "\n".join(kept)
 
 
+def normalize_for_compare(patch: str, max_chars: int = 50_000) -> str:
+    """Normalize a raw patch and truncate to ``max_chars`` for comparison.
+
+    The raw patch is sliced to ``max_chars * 4`` BEFORE normalization so that a
+    pathologically large diff (e.g. a 29 MB generated-file PR) never gets fully
+    split into lines — bounding peak memory regardless of source diff size.
+    Backport-identical patches share their prefix, so the leading ~50K
+    normalized chars remain a faithful similarity signal after the raw cap.
+    """
+    raw_cap = max_chars * 4
+    return normalize_diff(patch[:raw_cap])[:max_chars]
+
+
 def diff_similarity(a: str, b: str, max_chars: int = 50_000) -> float:
     """Return difflib ratio of normalized diffs (0.0–1.0).
 
@@ -96,8 +109,8 @@ def diff_similarity(a: str, b: str, max_chars: int = 50_000) -> float:
                    At 50K chars the comparison is still accurate for backport
                    detection (identical patches share 99%+ chars at the start).
     """
-    na = normalize_diff(a)[:max_chars]
-    nb = normalize_diff(b)[:max_chars]
+    na = normalize_for_compare(a, max_chars)
+    nb = normalize_for_compare(b, max_chars)
     return difflib.SequenceMatcher(None, na, nb).ratio()
 
 
@@ -252,10 +265,28 @@ def build_edges(
                 pair = (min(prs[i], prs[j]), max(prs[i], prs[j]))
                 candidate_pairs.add(pair)
 
+    # Memoize each PR's normalized diff once — a PR can appear in many candidate
+    # pairs, and re-normalizing a multi-MB diff per pair is what exhausts memory.
+    norm_cache: dict[int, str] = {}
+
+    def _norm(num: int) -> str:
+        cached = norm_cache.get(num)
+        if cached is None:
+            cached = normalize_for_compare(by_number[num].get("diff") or "")
+            norm_cache[num] = cached
+        return cached
+
     for pair in candidate_pairs:
         a, b = pair
-        ra, rb = by_number[a], by_number[b]
-        sim = diff_similarity(ra.get("diff") or "", rb.get("diff") or "")
+        sm = difflib.SequenceMatcher(None, _norm(a), _norm(b))
+        # quick_ratio()/real_quick_ratio() are guaranteed UPPER bounds on ratio().
+        # If the cheap upper bound can't reach the threshold, the full O(n*m)
+        # ratio() can't either — skip it. This preserves the exact set of
+        # diff-similar pairs while avoiding the expensive match on the vast
+        # majority of dissimilar candidate pairs.
+        if sm.real_quick_ratio() < sim_threshold or sm.quick_ratio() < sim_threshold:
+            continue
+        sim = sm.ratio()
         if sim >= sim_threshold:
             diff_similar_pairs[pair] = sim
 

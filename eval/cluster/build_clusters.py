@@ -309,9 +309,9 @@ def main(argv: list[str] | None = None) -> None:
     multi_member = sum(1 for c in artifact["clusters"] if len(c) > 1)
     print(
         f"clusters.json written: {artifact['corpus_fingerprint']['prs']} PRs, "
-        f"{n_clusters} clusters ({multi_member} with ≥2 members), "
+        f"{n_clusters} clusters ({multi_member} with >=2 members), "
         f"{len(artifact['edges'])} edges, "
-        f"hash={artifact['corpus_fingerprint']['hash'][:16]}…"
+        f"hash={artifact['corpus_fingerprint']['hash'][:16]}..."
     )
 
 
