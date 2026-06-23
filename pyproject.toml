@@ -48,6 +48,14 @@ dev = [
     "ruff",
     "mypy",
 ]
+# Eval harness extra -- NOT in runtime dependencies or dev.
+# Install with: pip install senrah[eval]
+# Keeps 'pip install senrah' LLM-free (D-17, JUDGE-01).
+# Legitimacy checkpoint: anthropic is the official Anthropic SDK, first-party,
+# published at PyPI by Anthropic PBC (T-09-SC).
+eval = [
+    "anthropic>=0.111.0,<1",
+]
 
 [project.scripts]
 senrah = "senrah.cli.main:app"

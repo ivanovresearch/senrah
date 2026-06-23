@@ -189,7 +189,9 @@ class TestEscalationLadderStub:
         """Return a grade_pair stub that yields grades from a fixed list."""
         it = iter(grades)
 
-        def stub(query: str, candidate: str, model: str) -> dict:
+        def stub(
+            query: str, candidate_problem: str, candidate_diff: str, model: str
+        ) -> dict:
             grade = next(it)
             return {"grade": grade, "rationale": "stub", "model": model}
 
@@ -197,15 +199,15 @@ class TestEscalationLadderStub:
 
     def test_opus_not_invoked_when_sonnet_kappa_above_threshold(self):
         """When Sonnet kappa >= 0.6, Opus must NOT be called."""
-        # We'll import the calibrate function and monkey-patch grade_pair
-        import importlib
         import eval.judge.judge as judge_mod
 
         gold = self._build_gold_above_threshold()
 
         called_models = []
 
-        def fake_grade(query: str, candidate: str, model: str) -> dict:
+        def fake_grade(
+            query: str, candidate_problem: str, candidate_diff: str, model: str
+        ) -> dict:
             called_models.append(model)
             # Return grade from gold human_grade to ensure high kappa
             for row in gold:
@@ -240,11 +242,12 @@ class TestEscalationLadderStub:
 
         call_log = []
 
-        def fake_grade(query: str, candidate: str, model: str) -> dict:
+        def fake_grade(
+            query: str, candidate_problem: str, candidate_diff: str, model: str
+        ) -> dict:
             call_log.append(model)
             if "sonnet" in model:
                 # Systematically disagree with human to get low kappa
-                # Human has relevant; return irrelevant and vice versa
                 for row in gold:
                     if row["query"] == query:
                         h = row["human_grade"]
@@ -280,7 +283,9 @@ class TestEscalationLadderStub:
         gold = self._build_gold_above_threshold()
         returned_grades = []
 
-        def fake_grade(query: str, candidate: str, model: str) -> dict:
+        def fake_grade(
+            query: str, candidate_problem: str, candidate_diff: str, model: str
+        ) -> dict:
             # Return raw 3-grade direct-precedent
             returned_grades.append("direct-precedent")
             return {"grade": "direct-precedent", "rationale": "stub", "model": model}
