@@ -40,7 +40,11 @@ async def _run(tag: str) -> None:
     env = EnvSettings()
     cfg = load_yaml_config(find_config_file())
 
-    manifest = json.loads((HERE / "manifest.json").read_text(encoding="utf-8"))
+    # Resolve manifest path: prefer manifest-<tag>.json if it exists,
+    # otherwise fall back to the canonical manifest.json (v2 default).
+    tagged_path = HERE / f"manifest-{tag}.json"
+    manifest_path = tagged_path if tagged_path.exists() else HERE / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     queries = manifest["queries"]
 
     # Symmetric with the index side: queries truncated like problem texts.
