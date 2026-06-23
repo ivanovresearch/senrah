@@ -46,9 +46,7 @@ class TestSenrahImportGraph:
             src_text = path.read_text(encoding="utf-8")
             import_lines = self._extract_import_lines(src_text)
             for line in import_lines:
-                if re.search(r"\banthopic\b|\banthopic\b", line):
-                    violations.append(f"{path.relative_to(REPO_ROOT)}: {line!r}")
-                if re.search(r"\banthopic\b", line):
+                if re.search(r"\banthropic\b", line):
                     violations.append(f"{path.relative_to(REPO_ROOT)}: {line!r}")
         assert not violations, (
             "src/senrah imports anthropic (must stay LLM-free, D-17):\n"
