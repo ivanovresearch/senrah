@@ -30,7 +30,7 @@ if sys.platform == "win32":
 HERE = pathlib.Path(__file__).parent
 
 
-async def _run(tag: str) -> None:
+async def _run(tag: str, manifest_override: str | None = None) -> None:
     from senrah.config import EnvSettings, find_config_file, load_yaml_config
     from senrah.db.pool import create_pool
     from senrah.db.repos.skill import SkillRepo
@@ -40,10 +40,27 @@ async def _run(tag: str) -> None:
     env = EnvSettings()
     cfg = load_yaml_config(find_config_file())
 
-    # Resolve manifest path: prefer manifest-<tag>.json if it exists,
-    # otherwise fall back to the canonical manifest.json (v2 default).
-    tagged_path = HERE / f"manifest-{tag}.json"
-    manifest_path = tagged_path if tagged_path.exists() else HERE / "manifest.json"
+    # Resolve manifest path. Precedence:
+    #   1. explicit --manifest PATH (use exactly, fail if missing)
+    #   2. manifest-<tag>.json if it exists
+    #   3. canonical manifest.json (v2 default) -- but LOUDLY, never silently:
+    #      a silent fall-through here can freeze the wrong baseline (T-09-06).
+    if manifest_override is not None:
+        manifest_path = pathlib.Path(manifest_override)
+        if not manifest_path.is_absolute():
+            manifest_path = HERE / manifest_override
+        if not manifest_path.exists():
+            raise SystemExit(f"ERROR: --manifest path not found: {manifest_path}")
+    else:
+        tagged_path = HERE / f"manifest-{tag}.json"
+        if tagged_path.exists():
+            manifest_path = tagged_path
+        else:
+            manifest_path = HERE / "manifest.json"
+            print(
+                f"WARNING: no manifest-{tag}.json found; falling back to {manifest_path.name} "
+                f"(v2 default). Pass --manifest to select an explicit manifest."
+            )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     queries = manifest["queries"]
 
@@ -121,4 +138,10 @@ async def _run(tag: str) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(_run(sys.argv[1] if len(sys.argv) > 1 else "baseline"))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run known-item retrieval eval.")
+    parser.add_argument("tag", nargs="?", default="baseline", help="Output tag -> results-<tag>.json")
+    parser.add_argument("--manifest", default=None, help="Explicit manifest path (overrides tag-based resolution).")
+    args = parser.parse_args()
+    asyncio.run(_run(args.tag, args.manifest))
