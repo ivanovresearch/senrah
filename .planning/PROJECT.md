@@ -36,9 +36,23 @@ An AI agent solving a task in this codebase can retrieve the most relevant real 
 - User documentation: README install + MCP-client setup (Claude Code/Codex) + quickstart; CONTRIBUTING + CHANGELOG.
 - `senrah init` comment-preservation fix (closed the accepted v1.0 debt).
 
-## Next Milestone (planning): corpus depth
+## Current Milestone: v1.2 Corpus Depth — proving the lever
 
-The v1.0 A/B identified **corpus depth, not weight tuning**, as the strongest product lever. The likely v1.2 focus is `--scope all` / multi-year ingest, measured before/after on the frozen known-item eval. To be defined via `/gsd-new-milestone`.
+**Goal:** Determine whether, and by how much, multi-year corpus depth improves precedent retrieval — measured on a trustworthy temporal-holdout query-set, with a clean deduped eval scale built *first*. The v1.0 A/B named corpus depth (not weight tuning) the strongest product lever; this milestone tests that claim with the right instrument and ends on an explicit decision gate.
+
+**Sequence (not alternatives):**
+
+1. **Eval v3 (prerequisite).** Dedup backport clusters in the eval set and group them at corpus level so distractor counts stay honest as depth grows. Triage the 19 known-item misses (real retrieval failures vs duplicate/labeling artifacts). Outcome: a measuring stick trustworthy *before* the depth experiment runs — multi-year ingest multiplies backports, so an un-deduped deep corpus would make the delta uninterpretable.
+
+2. **Corpus-depth experiment (main).** Full multi-year `dotnet/efcore` ingest (`--scope all`; rate-limit throttle out of scope — the 3.5-month ceiling was an assumption, not a blocker). A **depth ladder** — shallow (3.5mo baseline) → 1yr → 2–3yr — on **one** temporal-holdout query-set; T chosen from the deep end (2–3yr before T = deepest corpus, 1yr+ after T = query-set). We measure the *shape of the curve* (where hit-rate plateaus → recommended ingest depth), not a binary depth yes/no.
+
+3. **Decision gate.** Hit-rate curve rises with depth → depth confirmed as the lever; plateau gives recommended ingest depth as a product setting. Curve flat on a clean deduped corpus → that's a result, and BM25/connectors rise in priority.
+
+**Metric structure (the methodological core — layered, asymmetric gate):**
+- **Primary / gate metric = automated temporal-holdout hit-rate** (known-item-style label, leak-free, reproducible). Coverage axis — *different* from known-item recall (ranking quality); measuring depth on known-item would falsely penalize it via added distractors.
+- **LLM-judge = secondary layer** measuring the *unlinked* convention-transfer hits the automated label misses; the judge is itself calibrated to a small human gold set before it scores the ladder (an unvalidated judge is the exact failure Eval v3 exists to prevent). The judge lives in the `eval/` harness, **not** in senrah — "read-only search, no LLM providers in senrah" still holds.
+- **Known-item recall@k = guardrail.** Depth must not erode ranking via distractors.
+- **Gate synchronization:** "flat" means flat on the automated metric **AND** the judge layer shows no depth-curve in unlinked hits. A flat automated number alone does not close depth.
 
 ## Requirements
 
@@ -47,15 +61,15 @@ The v1.0 A/B identified **corpus depth, not weight tuning**, as the strongest pr
 - вњ“ Full GitHub-only MVP вЂ” v1.0 (31/31 requirements, archived in `milestones/v1.0-REQUIREMENTS.md`): storage schema + HNSW, connector seam + GitHub connector, scoped/incremental/resumable ingest with filters and rate-limit handling, dual-embedding indexing with `--reindex`, weighted thresholded search with multi-repo narrowing, versioned MCP tool over stdio+network, full CLI (`init`/`repos`/`ingest`/`index`/`search`/`serve`/`status`), opt-in search logging, secrets hygiene + gitleaks, test suite.
 - v Release Readiness -- v1.1 (11/11 requirements, archived in `milestones/v1.1-REQUIREMENTS.md`): GitHub Actions CI (unit + pgvector-testcontainer integration + gitleaks) on push/PR; reproducible build + tag-to-TestPyPI publish via Trusted Publishing + single-source version (`senrah 0.1.0` live); README install/quickstart + MCP-client config + CONTRIBUTING + CHANGELOG; `senrah init` comment/indentation preservation (FIX-01).
 
-### Active (next milestone -- to be scoped via /gsd-new-milestone)
+### Active (v1.2 — being scoped into REQUIREMENTS.md)
 
-- [ ] Corpus depth: `--scope all` / multi-year ingest -- the A/B's identified lever; known-item eval is the before/after scale (strongest product candidate)
+- [ ] Eval v3: dedup backport clusters in the eval set + group at corpus level; triage the 19 known-item misses (real fails vs dup/labeling artifacts) — the trustworthy scale built *before* the depth experiment
+- [ ] Corpus depth: full multi-year `dotnet/efcore` ingest (`--scope all`); depth ladder (3.5mo → 1yr → 2–3yr) on one temporal-holdout query-set; automated temporal-holdout hit-rate as primary/gate, LLM-judge secondary layer, known-item recall@k as guardrail
 
 ### Future (deferred past v1.2)
 
-- [ ] Known-item eval v3: dedupe/penalize backport duplicates; investigate the 19 misses for systematics
-- [ ] Retrieval quality: BM25 hybrid, diff summary (A/B says second-order to corpus depth)
-- [ ] New connector (GitLab / Bitbucket / local git) via the existing seam
+- [ ] Retrieval quality: BM25 hybrid, diff summary (A/B says second-order to corpus depth; priority rises only if the v1.2 gate shows depth flat)
+- [ ] New connector (GitLab / Bitbucket / local git) via the existing seam (breadth = separate axis, after depth proven)
 
 ### Out of Scope
 
@@ -126,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-18 after v1.1 Release Readiness milestone*
+*Last updated: 2026-06-22 — milestone v1.2 Corpus Depth scoped via /gsd-new-milestone*
