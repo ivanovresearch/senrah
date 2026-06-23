@@ -36,7 +36,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 
 ### 📋 v1.2 Corpus Depth (Phases 9–11)
 
-- [ ] **Phase 9: Eval v3 — Trustworthy Deduped Scale** — backport-cluster dedup, 19-miss triage, re-frozen known-item scale, blind judge calibration (the measuring stick, built and frozen *before* any depth measurement)
+- [x] **Phase 9: Eval v3 — Trustworthy Deduped Scale** — backport-cluster dedup, 19-miss triage, re-frozen known-item scale, blind judge calibration (the measuring stick, built and frozen *before* any depth measurement) -- completed 2026-06-24
 - [ ] **Phase 10: Temporal-Holdout Harness + Multi-Year Ingest** — additive `corpus_t` window param, leak-free post-T query-set, automated hit-rate@k gate scorer with bootstrap CIs, full `--scope all` `dotnet/efcore` ingest + index
 - [ ] **Phase 11: Depth Ladder + Judge + Decision Gate** — 3-rung ladder, recall@k guardrail per rung, conditional calibrated LLM-judge, plateau read-out, synchronized two-condition decision gate
 
@@ -56,7 +56,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   - [x] 09-01-PLAN.md — EVAL-01: backport/cherry-pick cluster detector (union-find over corroborated edges, diff-sim never merges alone, under-merge bias) → frozen hash-pinned clusters.json [wave 1]
   - [x] 09-04-PLAN.md — JUDGE-01: blind judge calibration (stdlib Cohen's κ, stratified gold.jsonl, Sonnet 4.6→Opus 4.8 escalation ladder, eval extra + import-graph isolation guard) [wave 1, parallel]
   - [x] 09-02-PLAN.md — EVAL-02 + EVAL-03: reusable per-cluster grouping module (divergence fixture) + two-stage 19-miss triage (Stage-1 mechanical, Stage-2 human, no LLM) [wave 2]
-  - [ ] 09-03-PLAN.md — EVAL-04: re-frozen v3-knownitem-deduped manifest (cluster-sourced relevant_prs, recorded corrections, reused v2 query text) + run_eval re-run → results-v3-deduped.json [wave 3]
+  - [x] 09-03-PLAN.md — EVAL-04: re-frozen v3-knownitem-deduped manifest (cluster-sourced relevant_prs, recorded corrections, reused v2 query text) + run_eval re-run → results-v3-deduped.json [wave 3]
 
 ### Phase 10: Temporal-Holdout Harness + Multi-Year Ingest
 **Goal**: The real, leak-free measurement instrument exists and the deep corpus is ingested — every depth rung is materializable from one ingest and one index.
@@ -92,7 +92,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 6. Continuous Integration | v1.1 | Complete | 2026-06-14 |
 | 7. Release Pipeline | v1.1 | Complete | 2026-06-18 |
 | 8. Documentation & Polish | v1.1 | Complete | 2026-06-14 |
-| 9. Eval v3 — Trustworthy Deduped Scale | 2/4 | In Progress|  |
+| 9. Eval v3 — Trustworthy Deduped Scale | v1.2 | Complete | 2026-06-24 |
 | 10. Temporal-Holdout Harness + Multi-Year Ingest | v1.2 | Not started | - |
 | 11. Depth Ladder + Judge + Decision Gate | v1.2 | Not started | - |
 

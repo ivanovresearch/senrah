@@ -9,7 +9,7 @@ progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -34,8 +34,8 @@ See: .planning/PROJECT.md (updated 2026-06-22 after v1.2 scoping)
 ## Current Position
 
 Phase: 09 (eval-v3-trustworthy-deduped-scale) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
+Plan: 4 of 4 (complete)
+Status: Phase 09 complete -- all 4 plans delivered
 Last activity: 2026-06-24
 
 ## Performance Metrics
@@ -44,7 +44,7 @@ Last activity: 2026-06-24
 |--------|-------|
 | Phases complete | 0 / 3 (v1.2) |
 | Requirements delivered | 1 / 13 (v1.2) — JUDGE-01 |
-| Plans complete | 3 / 4 (Phase 09) |
+| Plans complete | 4 / 4 (Phase 09 -- complete) |
 | Unit tests | 302 passing |
 
 ---
@@ -116,6 +116,8 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 | anthropic imported lazily in grade_pair (not at module top) | eval.judge.judge must be importable in tests without pip install senrah[eval]; deferred import is the idiomatic pattern | 9 |
 | Per-cluster deduplication: hit on any cluster member = one cluster hit; distractors per-cluster (EVAL-02 / D-08) | Divergence fixture demonstrates per-PR=2 vs per-cluster=1 for two cluster members in top-k | 9 |
 | Stage-2 triage final: 2 duplicate (Stage-1 auto), 17 real-fail, 0 label-error (EVAL-03 / D-09) | Conservative stance on 37194 (no positive evidence 37359 ranked, frozen store has only top1) under D-11 no-silent-number-tuning | 9 |
+| v3 deduped baseline: recall@1=0.711, recall@5=0.899, recall@10=0.927, MRR@10=0.794 (EVAL-04) | 3 misses recovered (37762, 37474, 37194) via cluster grouping counting any member as a hit; movement is structural (per-cluster scoring), not number tuning (D-11) | 9 |
+| run_eval.py requires explicit --manifest flag; silent tag-to-filename fallback is now loud | A missing manifest-v3-deduped.json silently re-used v2 and froze a wrong baseline; explicit --manifest + loud fallback prevents T-09-06 re-freezing | 9 |
 
 ### Architectural Constraints (do not violate)
 
@@ -141,12 +143,12 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 ### Last Session
 
 - **Date:** 2026-06-24
-- **Action:** Executed 09-02-PLAN.md to completion (EVAL-02 grouping module + EVAL-03 two-stage miss triage with human Stage-2 checkpoint resolved).
-- **Outcome:** eval/cluster/grouping.py (pure per-cluster dedup), triage-v3.json (all 19 rows tagged: 2 duplicate via Stage-1, 17 real-fail via Stage-2 human), triage-v3.md written. 25 tests pass. EVAL-02 and EVAL-03 complete.
+- **Action:** Closed 09-03-PLAN.md (EVAL-04): wrote SUMMARY.md, updated STATE.md + ROADMAP.md. All Phase 09 plans complete.
+- **Outcome:** manifest-v3.json (v3-knownitem-deduped, 218 queries, cluster-sourced relevant_prs, 2 EVAL-03 corrections) + results-v3-deduped.json (recall@1=0.711 / recall@5=0.899 / MRR@10=0.794) frozen. 17 integration tests pass. Phase 09 complete -- EVAL-01 through EVAL-04 and JUDGE-01 all delivered.
 
 ### Resumption Prompt
 
-> Phase 09 Plan 02 complete (EVAL-02, EVAL-03). Plan 03 remains in Phase 09. Next: execute 09-03 (re-frozen v3 known-item deduped manifest + run_eval re-run -> results-v3-deduped.json). Phase 09 must complete before Phase 10 (depth experiment).
+> Phase 09 complete (EVAL-01..04 + JUDGE-01). The trustworthy deduped baseline exists. Phase 10 (Temporal-Holdout Harness + Multi-Year Ingest) is next. Start with /gsd-plan-phase 10.
 
 ---
 
