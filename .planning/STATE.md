@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Corpus Depth
-status: executing
-last_updated: "2026-06-24T00:00:00.000Z"
+status: ready_to_plan
+last_updated: 2026-06-24T10:09:03.039Z
 last_activity: 2026-06-24
 progress:
   total_phases: 3
@@ -11,6 +11,7 @@ progress:
   total_plans: 4
   completed_plans: 4
   percent: 0
+stopped_at: Phase 09 complete (4/4) — ready to discuss Phase 10
 ---
 
 # State: Senrah
@@ -27,15 +28,15 @@ See: .planning/PROJECT.md (updated 2026-06-22 after v1.2 scoping)
 
 **Core Value:** An AI agent solving a task in this codebase can retrieve the most relevant real merged-PR precedents (problem + the diff that solved it) via MCP, ranked by semantic similarity. If everything else fails, that retrieval must work.
 
-**Current Focus:** Phase 09 — eval-v3-trustworthy-deduped-scale
+**Current Focus:** Phase 10 — temporal holdout harness + multi year ingest
 
 ---
 
 ## Current Position
 
-Phase: 09 (eval-v3-trustworthy-deduped-scale) — EXECUTING
-Plan: 4 of 4 (complete)
-Status: Phase 09 complete -- all 4 plans delivered
+Phase: 10
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-06-24
 
 ## Performance Metrics
