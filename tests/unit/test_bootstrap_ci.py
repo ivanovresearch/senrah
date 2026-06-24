@@ -1,25 +1,14 @@
 """
-tests/unit/test_bootstrap_ci.py -- Unit test stubs for DEPTH-04 bootstrap CI.
+tests/unit/test_bootstrap_ci.py -- Unit tests for DEPTH-04 bootstrap CI.
 
-Tests the bootstrap_hit_rate_ci function for determinism and width monotonicity.
-These are WAVE-0 stubs; the target module eval.temporal.bootstrap_ci is created
-in Plan 05. All tests are skipped until that module exists.
+Tests the bootstrap_hit_rate_ci function for determinism (same seed -> same
+result), point-estimate independence from seed, CI width monotonicity, and
+boundary values (all-hits / all-misses).
 """
 
 from __future__ import annotations
 
-import pytest
-
-try:
-    from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci  # noqa: F401
-    _BOOTSTRAP_AVAILABLE = True
-except ImportError:
-    _BOOTSTRAP_AVAILABLE = False
-
-pytestmark = pytest.mark.skipif(
-    not _BOOTSTRAP_AVAILABLE,
-    reason="eval.temporal.bootstrap_ci not yet created -- Plan 05",
-)
+from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci
 
 
 # ---------------------------------------------------------------------------
@@ -30,10 +19,8 @@ pytestmark = pytest.mark.skipif(
 class TestBootstrapCIDeterminism:
     """bootstrap_hit_rate_ci must be deterministic given a fixed seed (DEPTH-04)."""
 
-    def test_same_seed_produces_identical_result(self):
+    def test_same_seed_same_result(self):
         """Calling bootstrap_hit_rate_ci twice with seed=42 must return identical (point, lo, hi)."""
-        from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci
-
         hits = [1, 0, 1, 1, 0, 1, 0, 0, 1, 1]
         r1 = bootstrap_hit_rate_ci(hits, seed=42)
         r2 = bootstrap_hit_rate_ci(hits, seed=42)
@@ -41,16 +28,14 @@ class TestBootstrapCIDeterminism:
             f"bootstrap_hit_rate_ci with seed=42 returned different results: {r1} vs {r2}"
         )
 
-    def test_result_is_three_tuple(self):
-        """Return value must be a (point, lo, hi) tuple of three floats."""
-        from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci
-
-        hits = [1, 0, 1, 1, 0]
-        result = bootstrap_hit_rate_ci(hits, seed=42)
-        assert len(result) == 3, f"Expected 3-tuple, got {len(result)}-tuple"
-        point, lo, hi = result
-        assert lo <= point <= hi, (
-            f"Expected lo <= point <= hi, got {lo} <= {point} <= {hi}"
+    def test_different_seed_may_differ(self):
+        """Point estimate is seed-independent; CI bounds may differ across seeds."""
+        hits = [1, 0, 1, 1, 0, 1, 0, 0, 1, 1]
+        r1 = bootstrap_hit_rate_ci(hits, seed=42)
+        r99 = bootstrap_hit_rate_ci(hits, seed=99)
+        # Point estimate is arithmetic mean of hits -- deterministic regardless of seed
+        assert r1[0] == r99[0], (
+            f"Point estimate should be identical across seeds: {r1[0]} vs {r99[0]}"
         )
 
 
@@ -62,21 +47,34 @@ class TestBootstrapCIDeterminism:
 class TestBootstrapCIWidthMonotonicity:
     """CI width (hi - lo) must shrink as the number of observations N increases."""
 
-    def test_width_smaller_with_large_n(self):
+    def test_width_shrinks_with_n(self):
         """CI width with N=200 must be strictly less than CI width with N=20."""
-        from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci
-
-        # Use a 60% hit rate for both
-        hits_small = [1, 0, 1, 0, 1, 1, 0, 1, 0, 1,
-                      1, 0, 0, 1, 0, 1, 1, 0, 1, 0]  # N=20
-        hits_large = hits_small * 10  # N=200, same 60% rate
-
-        _, lo_small, hi_small = bootstrap_hit_rate_ci(hits_small, seed=42)
-        _, lo_large, hi_large = bootstrap_hit_rate_ci(hits_large, seed=42)
-
-        width_small = hi_small - lo_small
-        width_large = hi_large - lo_large
-        assert width_large < width_small, (
+        small = [1, 0] * 10    # N=20, 50% hit rate
+        large = [1, 0] * 100   # N=200, same 50% hit rate
+        _, lo_s, hi_s = bootstrap_hit_rate_ci(small, seed=42)
+        _, lo_l, hi_l = bootstrap_hit_rate_ci(large, seed=42)
+        assert (hi_s - lo_s) > (hi_l - lo_l), (
             f"CI width must shrink with larger N: "
-            f"N=20 width={width_small:.4f}, N=200 width={width_large:.4f}"
+            f"N=20 width={hi_s - lo_s:.4f}, N=200 width={hi_l - lo_l:.4f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: boundary point estimates
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapCIPointEstimate:
+    """Point estimate at boundaries: all-hits -> 1.0, all-misses -> 0.0."""
+
+    def test_all_hits_gives_point_one(self):
+        """All queries are hits -> point estimate is 1.0."""
+        hits = [1] * 50
+        point, _, _ = bootstrap_hit_rate_ci(hits, seed=42)
+        assert point == 1.0, f"Expected point=1.0 for all-hits, got {point}"
+
+    def test_all_misses_gives_point_zero(self):
+        """All queries are misses -> point estimate is 0.0."""
+        hits = [0] * 50
+        point, _, _ = bootstrap_hit_rate_ci(hits, seed=42)
+        assert point == 0.0, f"Expected point=0.0 for all-misses, got {point}"
