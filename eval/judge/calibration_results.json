@@ -1,0 +1,1264 @@
+{
+  "provenance": {
+    "transport": "openai-compatible",
+    "endpoint": "https://openrouter.ai/api/v1",
+    "models": {
+      "sonnet": "anthropic/claude-sonnet-4.6",
+      "opus": "anthropic/claude-opus-4.8"
+    },
+    "note": "Models served via the OpenAI-compatible endpoint above (OpenRouter by default). Slugs are OpenRouter routing identifiers, not direct Anthropic API model IDs; upstream model build is not independently pinned. Blind calibration: run before any depth measurement."
+  },
+  "kappa_floor": 0.6,
+  "kappa_metric": "multi-category Cohen's kappa (no collapse) over the raw 3-grade scale",
+  "sonnet_kappa": 0.2683,
+  "sonnet_grades": [
+    {
+      "query": "Fix ArgumentNullException thrown when calling Include on a navigation property that has a null value in the filter expression",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent describes the exact same problem (ArgumentNullException when calling Include on a navigation property with a null value in the filter expression) and applies the same fix pattern (null check before visiting the expression) in the same file.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ArgumentNullException thrown when calling Include on a navigation property that has a null value in the filter expression",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same bug (ArgumentNullException when calling Include on a navigation property with a null value in the filter expression) with the same fix (null check in NavigationExpandingExpressionVisitor), making it directly applicable.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix NullReferenceException in GroupBy when key selector returns null for some elements",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same problem (NullReferenceException in GroupBy when key selector returns null) in the same codebase area, with a directly applicable fix pattern.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "InvalidOperationException when using Owned Entity with table splitting and calling SaveChanges after updating only one side",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent describes the exact same bug (InvalidOperationException with Owned Entity, table splitting, SaveChanges after updating only one side) and the diff shows a specific fix in StateManager.cs for handling shared identity entries \u2014 this is the same problem and solution.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Query with Contains on nullable int column generates incorrect SQL with NULL handling",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent describes the exact same problem (Contains on nullable int column generating incorrect SQL with NULL handling) and shows a direct fix in the same file/area of code.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect SQL generated for DISTINCT with ORDER BY when using PostgreSQL provider",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses fixing ORDER BY clause generation when DISTINCT is applied in PostgreSQL, which is essentially the same problem as the current task of fixing incorrect SQL generated for DISTINCT with ORDER BY in the PostgreSQL provider.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect translation of Math.Truncate for decimal types in SQL Server provider",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent fixes incorrect SQL generation for `Math.Floor` on decimal types in the SQL Server provider using `ROUND(..., 0, 1)`, which is essentially the same pattern needed for `Math.Truncate` on decimal types \u2014 both involve fixing a math function translation for decimals in the same file/translator, and `ROUND(x, 0, 1)` is in fact the correct SQL Server translation for truncation as well.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add support for ExecuteUpdate on entities with table-per-type inheritance",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses adding ExecuteUpdate support for TPT (table-per-type) inheritance, which is exactly what the current task requires.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "ExecuteDelete throws NotSupportedException for entities mapped to views",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses throwing an error when ExecuteDelete/ExecuteUpdate is called on entities mapped to views, which is exactly what the current task requires.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "JsonSerializer fails on complex owned entity with circular reference when serializing change tracker state",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses JsonSerializer failing on EF Core metadata (INavigationBase.DeclaringEntityType for skip navigations), while the current task involves JsonSerializer failing on complex owned entities with circular references in change tracker state \u2014 both involve JsonSerializer + EF Core metadata serialization issues, but the specific problems (skip navigation property info vs. owned entity circular references) are distinct.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "cosmos: Fix incorrect OFFSET/LIMIT translation when query uses Skip/Take with OrderBy",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses Cosmos pagination issues with Skip/Offset handling, which is in the same domain (Cosmos OFFSET/LIMIT translation with Skip/Take), but the specific problem differs: the precedent handles Skip without Take, while the current task involves incorrect translation when OrderBy is also present.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Fix memory leak in connection pool when using multiple DbContext instances concurrently",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses connection pool exhaustion via proper disposal of owned connections in `RelationalConnection`, while the current task targets memory leaks in connection pool with concurrent `DbContext` instances \u2014 both involve connection lifecycle management in EF Core's relational layer, but the specific problem (exhaustion from sequential loop vs. memory leak from concurrent usage) and likely fix differ.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add IAsyncEnumerable support to FromSqlRaw for streaming large result sets",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent adds `IAsyncEnumerable` support to queryable extensions in EF Core Relational, which is essentially the same problem as adding `IAsyncEnumerable` support to `FromSqlRaw` for streaming large result sets \u2014 both involve enabling async enumeration for raw SQL queries in the same codebase and layer.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "NullReferenceException in Include when navigation has shadow properties and the entity is not tracked",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses a different exception type (ObjectDisposedException vs NullReferenceException) and a different root cause (DbContext disposal vs shadow properties on untracked entities), though both involve navigation property handling in EF Core.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Add JSON column support for PostgreSQL provider using System.Text.Json",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent solves the exact same problem (adding JSON column support with System.Text.Json) but for SQL Server instead of PostgreSQL, meaning the pattern transfers directly with provider-specific adaptations.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Fix regression in Include with filtered navigation when using AsTracking vs AsNoTracking",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent deals with change tracking behavior when switching between tracking and no-tracking modes in query compilation, which is closely related to the current task involving AsTracking vs AsNoTracking behavior in Include with filtered navigation. However, the current task specifically focuses on a regression in Include with filtered navigation, while the precedent addresses a more general change tracking switching issue. The fix location (QueryCompilationContextDependencies) and the pattern (tracking query mode initialization) are similar but the specific problem context differs slightly.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add Timestamp/rowversion support to ExecuteUpdate for optimistic concurrency",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses adding Timestamp/rowversion-based optimistic concurrency support to bulk ExecuteUpdate operations by appending WHERE conditions for concurrency properties \u2014 which is exactly what the current task requires.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "SQLite: Support DateTimeOffset with fractional seconds precision in type mapping",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses SQLite DateTimeOffset fractional seconds precision in type mapping, which is exactly what the current task requires.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core migrations fail when adding a column with a default value on Oracle provider",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses the same problem (EF Core migrations failing when adding a column with a default value) but for a different database provider (MySQL vs Oracle), meaning the fix pattern is highly similar but must be applied to a different provider-specific class.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix StackOverflowException in recursive CTE query translation",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses a StackOverflowException in SQL generation via depth-limiting iteration, but it targets deeply nested Include/SelectExpression traversal rather than recursive CTE query translation specifically. Both involve preventing stack overflows in EF Core's SQL generation pipeline, but the mechanism (iterative unwrapping of nested SelectExpressions) and context (Include nesting vs. CTE recursion) differ enough that the approach doesn't directly transfer.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Incorrect LINQ translation for chained Select projections with anonymous types",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses incorrect SQL generation from chaining Select projections with anonymous types, which matches the current task description almost exactly. The diff shows a fix in query optimization for `NewExpression` with members (anonymous type initializers), directly relevant to the problem of chained Select projections with anonymous types producing wrong LINQ/SQL translation.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add support for GENERATED ALWAYS AS (expression) columns in MySQL migrations",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses adding support for `GENERATED ALWAYS AS (expression)` columns in MySQL migrations, which is exactly the current task, using the same approach of appending the computed column SQL with STORED/VIRTUAL options.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add bulk insert optimization using COPY command for PostgreSQL when inserting large batches",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent implements bulk INSERT using PostgreSQL's COPY protocol (via `BeginBinaryImportAsync`), which is exactly what the current task requires \u2014 adding bulk insert optimization using the COPY command for PostgreSQL on large batches.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix incorrect result when calling FirstOrDefault on an empty IQueryable with a value-type key",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The current task is about fixing `FirstOrDefault` on an empty `IQueryable` with a **value-type key** (non-nullable struct), while the precedent fixes the case where the type is `Nullable<T>`. These are related but distinct scenarios \u2014 both involve `FirstOrDefault` returning incorrect results for empty result sets in the same code area, but the fix targets different type conditions (nullable vs. non-nullable value types).",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Slow query performance when EF Core generates IN clause with more than 1000 parameters for SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same problem: large IN clauses with many parameters in EF Core causing SQL Server performance/limit issues, and the solution (routing to a temp table when parameter count exceeds a threshold) is exactly the kind of fix needed for the current task.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Entity Framework throws DbUpdateConcurrencyException spuriously when no rows were actually modified",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same issue: `DbUpdateConcurrencyException` being thrown spuriously, and the fix involves skipping the concurrency check for entities that are in an `Unchanged` state (i.e., no actual modifications), which directly maps to the current task's problem of the exception being thrown when no rows were actually modified.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Cannot use Contains() with IEnumerable<Guid> in EF Core LINQ queries after upgrade to 7.0",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the same root issue (Contains() with IEnumerable<T> throwing after upgrading to EF Core 7.0) but for `string` instead of `Guid`; the fix pattern (handling IEnumerable<T> in the expression visitor) would directly transfer to the Guid case.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "The model snapshot generated by migrations does not preserve custom annotations on owned entities",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same issue: custom annotations (specifically `[Comment]`) on owned entity properties not being preserved in the model snapshot, and the fix involves iterating over annotations in `CSharpSnapshotGenerator.cs` to include them \u2014 which is exactly the pattern needed for the current task.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Add interceptor for SaveChanges that can modify entities before they are saved",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent implements `ISaveChangesInterceptor` to intercept and act on entities before a database write, which is essentially the same problem as adding an interceptor for `SaveChanges` that can modify entities before they are saved \u2014 both involve the same interface, the same hook point, and the same registration pattern.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix incorrect ORDER BY generated when using ThenBy on a navigation property with table splitting",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent addresses the exact same problem: fixing incorrect ORDER BY generation when using ThenBy with table splitting in EF Core's relational query layer, and the diff shows a direct fix in SelectExpression.cs for this scenario.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Connection string builder ignores Encrypt=false setting in SQL Server provider",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses exactly the same issue: the `Encrypt` property in a SQL Server connection string not being properly handled by the connection string builder, which is precisely what the current task describes.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Cannot configure default schema for migrations in a multi-tenant application",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses configuring the default schema for migrations history table in a multi-tenant scenario where `HasDefaultSchema()` is used, which is essentially the same problem as being unable to configure the default schema for migrations in a multi-tenant application.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core 8 breaking change: HasConversion<T> no longer supports implicit conversions from string to enum",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The candidate precedent deals with `HasConversion` and enum-to-string mapping in EF Core 8, which is closely related to the current task about `HasConversion<T>` no longer supporting implicit conversions from string to enum. Both involve the same method, the same EF Core version, and the same enum/string conversion domain, but the candidate addresses the reverse direction (enum\u2192string inference) and a different specific behavior (automatic inference vs. implicit conversion support).",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix incorrect SQL when composing a subquery that uses UNION ALL with EF Core LINQ",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses EF Core generating invalid SQL for UNION ALL queries when composed with additional LINQ operators, which is exactly the current task's problem, and the fix involves wrapping the union in a subquery \u2014 a directly transferable approach.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix NullReferenceException when using Cosmos DB provider with a query that projects to a primitive type",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same issue: a NullReferenceException in the Cosmos DB provider's projection binding expression visitor when projecting to primitive types (string or int), and the fix involves a null check on the projection expression \u2014 directly applicable to the current task.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix memory leak when caching compiled queries that use closures over large objects",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The diff excerpt shows the caching mechanism for compiled queries but doesn't actually demonstrate fixing the memory leak from closure capture over large objects \u2014 it only shows the basic cache lookup/store pattern without any WeakReference, expression tree sanitization, or closure variable extraction that would address the memory leak problem described in the problem statement.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core throws InvalidOperationException: The specified field 'k__BackingField' could not be found",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task involves an `InvalidOperationException` about a backing field (`k__BackingField`) not being found in EF Core, and the candidate precedent addresses an `InvalidOperationException` about finding a backing field for a property in EF Core, with a fix that throws `MissingBackingField` when the field cannot be located via reflection \u2014 this is essentially the same class of problem and the same code area.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "TPH (table-per-hierarchy) discriminator value not set when inserting derived entity via raw SQL",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The current task is about the discriminator value not being set when **inserting** a derived entity via raw SQL, while the precedent addresses the discriminator column being NULL when **reading/materializing** a derived entity via `FromSqlRaw`. These are different operations (write vs. read path), even though both involve TPH discriminators and raw SQL.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Add support for KeylessEntityType in ExecuteDelete bulk operations",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task wants to *add support* for KeylessEntityType in ExecuteDelete, while the precedent *adds a descriptive error* for KeylessEntityType in ExecuteDelete. These are opposing approaches to the same specific problem (handling keyless entity types in ExecuteDelete), making the precedent directly relevant as the exact code that needs to be modified/replaced.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Regression: EF Core 8 breaks AddRange when list contains derived types mixed with base types in the same call",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent directly addresses the same regression in EF Core 8 where `AddRange` fails with mixed base and derived types, and the diff shows a fix using `IsAssignableFrom` to handle type hierarchy checks in the state manager.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix SQL Server temporal table query: System-time BETWEEN generates wrong date boundary",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The current task involves fixing a SQL Server temporal table query where `BETWEEN` generates wrong date boundaries, while the precedent addresses an `AS OF` query with UTC timestamp handling. Both involve SQL Server temporal tables and date/time boundary issues, but the specific problem (BETWEEN clause vs AS OF clause, and date boundary vs UTC kind specification) differs enough that the fix doesn't directly transfer.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "NpgsqlRange mapping breaks when EF Core model is used with both regular and temporal queries",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent deals with NpgsqlRange type mapping conflicts in the same source file (`NpgsqlTypeMappingSource.cs`), but the specific conflict is with SQL Server temporal table annotations rather than EF Core temporal queries. The current task involves NpgsqlRange mapping breaking with temporal queries, which is a related but distinct scenario \u2014 the fix pattern (guarding against incompatible annotations) may be similar, but the exact trigger and solution differ.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix [backport 8.0] Incorrect result for GroupBy with HasQueryFilter applied to the grouped entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task is about fixing incorrect results for GroupBy with HasQueryFilter applied to grouped entities (backport to 8.0), and the candidate precedent addresses the same issue: GroupBy with global query filter producing wrong results where the filter is applied after grouping instead of before, also targeting release/8.0. The fix approach (applying query filters at the correct point in the translation pipeline) directly matches what the current task requires.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Incorrect result for GroupBy with HasQueryFilter applied to the grouped entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task describes incorrect results for GroupBy when HasQueryFilter is applied to the grouped entity, and the candidate precedent directly addresses the same bug: global query filters being applied at the wrong stage (after grouping instead of before) in GroupBy queries, with a fix that ensures filters are applied correctly during query translation.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Add IDbContextFactory<T>.CreateDbContext() support for scoped services in Blazor Server",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses scoped service resolution in DbContextFactory for Blazor Server, which is exactly the problem described in the current task, using the same pattern of creating a scope from the service provider.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix regression: owned entity with value object fails SaveChanges after update when using InMemory provider",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same issue: owned entities with value objects (which use key properties) failing during SaveChanges with the InMemory provider in EF Core, and the fix is applied in the same file (`InMemoryTable.cs`) with logic targeting modified owned entries whose key properties changed.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 7.0] NullReferenceException in Distinct() when applied to a projection containing null literals",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task is a backport of the exact same fix described in the candidate precedent \u2014 both address a NullReferenceException in Distinct() when applied to a projection containing null literals, with the same code change in SelectExpression.cs.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "NullReferenceException in Distinct() when applied to a projection containing null literals",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent describes the exact same problem (NullReferenceException in Distinct() with null literals in projections) and shows a fix in the same file/area that directly addresses it by skipping null constant expressions.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ordering of interceptors when multiple ISaveChangesInterceptor implementations are registered",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent fixes ordering of a different interceptor type (`IDbCommandInterceptor`) using the same pattern (sorting by `Order` property in `InterceptorAggregator`), which directly maps to fixing ordering for `ISaveChangesInterceptor` in the same infrastructure.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "DbContext.Entry() throws ArgumentException when the entity has been detached and re-attached",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent deals with identity map conflicts when tracking entities with duplicate keys, while the current task is about `DbContext.Entry()` throwing an `ArgumentException` specifically during detach/re-attach cycles \u2014 both involve entity tracking state management, but the specific problem and fix differ.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix bug where HasDefaultValue() on a column is ignored when the column is part of an owned entity",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses a nearly identical problem: a default value configuration being ignored for owned entity properties, just with `HasDefaultValueSql()` instead of `HasDefaultValue()`. The fix pattern (checking `IsOwned()` and applying the default) would directly transfer to fixing the `HasDefaultValue()` case.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "OperationCanceledException not propagated correctly when cancellation token is passed to ToListAsync",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same problem: `OperationCanceledException`/`TaskCanceledException` being swallowed during async database operations with cancellation tokens, and the fix is explicitly re-throwing the cancellation exception before any broader catch handler can swallow it.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core migration: Cannot add foreign key constraint when using circular references in table relationships",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same problem (EF Core migration failing due to circular foreign key references) and implements a solution (detecting circular references and deferring FK operations) that would directly apply to the current task.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 6.0] Wrong SQL generated for Any() on collection navigation when used inside a negated Where clause",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent describes the exact same bug fix (\"Wrong SQL generated for Any() on collection navigation when used inside a negated Where clause\") for the same release branch (6.0), with a diff showing the precise fix of wrapping the expression in a `SqlUnaryExpression` with `ExpressionType.Not` when negated.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Wrong SQL generated for Any() on collection navigation when used inside a negated Where clause",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent and the current task have identical problem descriptions and the diff shows a direct fix for handling negated `Any()` on collection navigation in SQL generation.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ValueConverter not applied to shadow property when running a projection query",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses exactly the same issue: ValueConverter not being applied to shadow properties during projection queries, with a fix in the same area of the codebase (RelationalProjectionBindingExpressionVisitor).",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Performance: Add index hint support to FromSqlRaw queries in SQL Server provider",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses adding SQL Server-specific query hints (NOLOCK, FORCESEEK) via annotations and generating them in the SQL query generator, while the current task is about adding index hint support to FromSqlRaw queries \u2014 both involve injecting SQL Server-specific hint syntax into generated queries, using very similar annotation-based patterns in the same query SQL generator infrastructure.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Incorrect SQL for IN expression when list contains both null and non-null values",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task describes incorrect SQL generation for IN expressions when the list contains both null and non-null values, and the candidate precedent shows a fix for exactly that scenario in EF Core's `InExpression.cs` \u2014 detecting null values in a collection and adding an `IS NULL` check via `OrElse`.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core 8: Breaking change - GREATEST/LEAST functions now used in comparisons involving nullable types",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same EF Core 8 issue of GREATEST/LEAST vs CASE expression translation for nullable types in Math.Max/Math.Min comparisons, which is precisely the breaking change described in the current task.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 9.0] EF Core migration: renaming a table fails when there are dependent FKs in SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent addresses the exact same bug (EF Core migration table rename failing due to dependent FKs in SQL Server) and shows the precise fix (drop/recreate dependent foreign keys around the rename operation), differing only in the branch label (release/9.0 vs backport 9.0).",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "EF Core migration: renaming a table fails when there are dependent FKs in SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent describes the exact same problem (EF Core migration table rename failing due to dependent FKs in SQL Server) and implements the same solution pattern (drop dependent FKs, rename, recreate FKs).",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect translation of DateTime.AddYears when the year would exceed max DateTime value",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses SQL translation of `DateTime.AddMonths` with overflow handling, while the current task is about fixing incorrect translation of `DateTime.AddYears` when exceeding max DateTime value \u2014 same domain, same pattern, nearly identical problem but for a different method.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "GroupBy count is off by one when using HasQueryFilter and IgnoreQueryFilters()",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent describes exactly the same bug: GroupBy count being wrong when a global query filter is applied but then ignored via `IgnoreQueryFilters()`, and the fix directly addresses this by stripping filters from the group-by source when query filters are ignored.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core throws when deserializing owned entities from JSON column if the JSON array is empty",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent describes the exact same bug (EF Core failing to deserialize owned entities from a JSON column when the array is empty) and shows a direct fix in the JSON collection reader/writer by handling the empty array case explicitly.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix missing WHERE clause when using ExecuteDelete on a derived type in a TPT hierarchy",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent addresses ExecuteDelete on a derived type in a TPT hierarchy, but focuses on a missing discriminator filter (wrong SQL for TPT), while the current task focuses on a missing WHERE clause for a derived type in TPT. Both involve ExecuteDelete on TPT derived types and touch the same code area, but the specific fix (joining delete target vs. WHERE clause generation) differs slightly. However, the problem domain and code location are essentially the same.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 8.0] Skip navigation (many-to-many) throws when calling Include().ThenInclude() on the join entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task and the candidate precedent describe the same bug (\"Skip navigation (many-to-many) throws when calling Include().ThenInclude() on the join entity\") with the only difference being the branch label (\"[backport 8.0]\" vs \"[release/8.0]\"), and the diff shows the exact fix in the same file/method that would apply to the backport.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Skip navigation (many-to-many) throws when calling Include().ThenInclude() on the join entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent and the current task have identical problem statements, both addressing skip navigation (many-to-many) throwing when calling Include().ThenInclude() on the join entity, and the diff shows a fix in the navigation expanding expression visitor for this exact scenario.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect SQL when projecting a non-null constant into a nullable column in a subquery",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses the same problem: fixing incorrect SQL generation when projecting a non-null constant into a nullable column in a subquery, which matches the current task description exactly.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix incorrect result when applying Where() after GroupBy().Select() with Count() in subquery context",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The current task involves fixing incorrect results when applying `Where()` after `GroupBy().Select()` with `Count()` in a subquery context, which is essentially about ensuring that filtering after a group-by aggregation generates a HAVING clause rather than a WHERE clause. The precedent directly addresses the same issue: generating a HAVING clause when combining GroupBy with Where in a subquery context, and the fix pattern (detecting aggregate/groupby and routing to HAVING) is exactly what would be needed.",
+      "model": "anthropic/claude-sonnet-4.6",
+      "stratum": "hard"
+    }
+  ],
+  "opus_invoked": true,
+  "opus_kappa": 0.3883,
+  "opus_grades": [
+    {
+      "query": "Fix ArgumentNullException thrown when calling Include on a navigation property that has a null value in the filter expression",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent's problem statement matches the task verbatim, and the diff adds a null-check that directly resolves the ArgumentNullException in the navigation expansion code path.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ArgumentNullException thrown when calling Include on a navigation property that has a null value in the filter expression",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent's problem statement matches the current task verbatim, and the diff directly adds a null-check in the navigation expansion logic that resolves the exact ArgumentNullException described.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix NullReferenceException in GroupBy when key selector returns null for some elements",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate addresses the identical problem (NullReferenceException in GroupBy from null key selector) in the GroupBy translation code, directly transferring to the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "InvalidOperationException when using Owned Entity with table splitting and calling SaveChanges after updating only one side",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent's problem statement matches the current task verbatim, and the diff addresses the SharedIdentityEntry (table splitting) case directly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Query with Contains on nullable int column generates incorrect SQL with NULL handling",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent addresses the identical problem\u2014incorrect SQL with NULL handling for Contains (InExpression) on nullable columns\u2014and the diff directly implements null semantics for the same scenario.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect SQL generated for DISTINCT with ORDER BY when using PostgreSQL provider",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the same problem domain (incorrect ORDER BY SQL generation with DISTINCT in PostgreSQL) and the filtering approach for orderings not in the projection directly transfers to the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect translation of Math.Truncate for decimal types in SQL Server provider",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "This precedent fixes a Math.Floor decimal translation bug in the same SqlServerMathTranslator file, using the same decimal-type-handling pattern directly applicable to fixing Math.Truncate.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add support for ExecuteUpdate on entities with table-per-type inheritance",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses adding ExecuteUpdate support for TPT inheritance, which is the identical problem stated in the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "ExecuteDelete throws NotSupportedException for entities mapped to views",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses ExecuteDelete/ExecuteUpdate behavior for entities mapped to views, matching the current task, though the specific exception/message detail differs slightly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "JsonSerializer fails on complex owned entity with circular reference when serializing change tracker state",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve EF Core metadata/navigation handling surfacing during JsonSerializer interaction, but the precedent addresses skip navigation DeclaringEntityType errors, not circular references in owned entities during change tracker serialization.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "cosmos: Fix incorrect OFFSET/LIMIT translation when query uses Skip/Take with OrderBy",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve Cosmos query translation of Skip/Take into OFFSET/LIMIT, but the precedent specifically handles the Skip-without-Take case while the current task concerns OFFSET/LIMIT translation with OrderBy\u2014same subsystem and closely related mechanics, though not the identical bug.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Fix memory leak in connection pool when using multiple DbContext instances concurrently",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses connection lifecycle/disposal in the same RelationalConnection area and resource-cleanup pattern, but targets pool exhaustion from sequential create/dispose loops rather than a memory leak under concurrent multi-DbContext use, so the approach is suggestive but not directly applicable.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add IAsyncEnumerable support to FromSqlRaw for streaming large result sets",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent adds general IAsyncEnumerable support for queryables but doesn't specifically target FromSqlRaw streaming, though the patterns and domain align closely.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "NullReferenceException in Include when navigation has shadow properties and the entity is not tracked",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve EF Core navigation handling and exceptions, but the precedent addresses lifecycle/disposal of lazy-loaded navigations, not null references from shadow properties on untracked entities during Include.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Add JSON column support for PostgreSQL provider using System.Text.Json",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent solves JSON column support via System.Text.Json type mapping for a different EF Core provider (SQL Server), so the same pattern applies but provider-specific details (PostgreSQL type mapping, jsonb handling) differ.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Fix regression in Include with filtered navigation when using AsTracking vs AsNoTracking",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve tracking-vs-no-tracking behavior in EF Core queries, but the precedent addresses general query tracking mode switching rather than the specific Include-with-filtered-navigation regression, so the approach overlaps in domain but doesn't directly solve the task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add Timestamp/rowversion support to ExecuteUpdate for optimistic concurrency",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent handles Timestamp/concurrency WHERE conditions in the SaveChanges update pipeline (UpdateSqlGenerator), but the current task targets the separate ExecuteUpdate bulk-update path, so the approach is in the same domain but doesn't directly transfer.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "SQLite: Support DateTimeOffset with fractional seconds precision in type mapping",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both the task and precedent concern SQLite DateTimeOffset type mapping with fractional/sub-second precision, modifying the same file with the same format-string approach.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core migrations fail when adding a column with a default value on Oracle provider",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses the same migration default-value bug but in a different provider (MySQL vs Oracle), so the pattern is highly similar yet provider-specific SQL syntax and helper logic won't transfer directly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix StackOverflowException in recursive CTE query translation",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve StackOverflow from recursive/deeply-nested SQL translation in the same SelectExpression component, and the depth-guard pattern likely transfers, but the precedent targets nested Include rather than recursive CTEs specifically.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Incorrect LINQ translation for chained Select projections with anonymous types",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses wrong SQL from chained Select projections with anonymous type initializers, matching the current task's incorrect LINQ translation of chained Select projections with anonymous types, with a directly transferable fix handling NewExpression members.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add support for GENERATED ALWAYS AS (expression) columns in MySQL migrations",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent implements GENERATED ALWAYS AS column support in MySQL migrations\u2014the exact same problem, with directly transferable code.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Add bulk insert optimization using COPY command for PostgreSQL when inserting large batches",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent implements PostgreSQL COPY-based bulk insert optimization using BeginBinaryImportAsync, matching the current task's goal of COPY-based bulk insert for large batches almost identically.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix incorrect result when calling FirstOrDefault on an empty IQueryable with a value-type key",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both precedent and task involve FirstOrDefault returning incorrect values for value-type keys on empty result sets in the same query compilation area, but the precedent specifically handles Nullable<T> conversion whereas the task concerns non-nullable value-type keys, so the fix doesn't directly transfer.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Slow query performance when EF Core generates IN clause with more than 1000 parameters for SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both address the same root issue\u2014EF Core generating excessive SQL parameters in IN/Contains clauses hitting SQL Server's ~1000 parameter limit\u2014and the diff's temp-table fallback directly transfers to the performance problem described.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Entity Framework throws DbUpdateConcurrencyException spuriously when no rows were actually modified",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both address spurious DbUpdateConcurrencyException for entities with no actual changes, and the fix skips processing for unchanged entries\u2014directly applicable.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Cannot use Contains() with IEnumerable<Guid> in EF Core LINQ queries after upgrade to 7.0",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical issue\u2014Contains() with IEnumerable<T> throwing after EF Core 7.0 upgrade\u2014differing only in element type (string vs Guid), and the fix translates directly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "The model snapshot generated by migrations does not preserve custom annotations on owned entities",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses model snapshot omitting custom annotations on owned entity properties, which is essentially the same problem and the annotation-emission fix directly transfers.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Add interceptor for SaveChanges that can modify entities before they are saved",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both tasks involve implementing an ISaveChangesInterceptor to inspect/modify entities before they are written to the database, making the approach directly transferable.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix incorrect ORDER BY generated when using ThenBy on a navigation property with table splitting",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both address incorrect ORDER BY generation when chaining ThenBy/OrderBy with table splitting in the same SelectExpression code area, targeting essentially the same bug.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Connection string builder ignores Encrypt=false setting in SQL Server provider",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both involve the SqlConnectionStringBuilder failing to propagate the Encrypt property in the SQL Server provider, making the precedent's fix directly applicable.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Cannot configure default schema for migrations in a multi-tenant application",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent fixes schema resolution for the migrations history table when a default schema is set, which is closely related to configuring default schema for migrations but addresses the history table specifically rather than general migration schema configuration for multi-tenancy.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core 8 breaking change: HasConversion<T> no longer supports implicit conversions from string to enum",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve EF Core 8 HasConversion behavioral changes around enum-string conversions, but the current task concerns string\u2192enum implicit conversions while the precedent addresses enum\u2192string mapping inference\u2014closely related yet not the identical direction or fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix incorrect SQL when composing a subquery that uses UNION ALL with EF Core LINQ",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses invalid SQL generation for UNION ALL queries composed with Where()/Select() in EF Core, which matches the current task of fixing incorrect SQL when composing a UNION ALL subquery in EF Core LINQ.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix NullReferenceException when using Cosmos DB provider with a query that projects to a primitive type",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent fixes a NullReferenceException in the Cosmos provider's projection binding visitor specifically for projecting to primitive types (string/int) from a complex object query, matching the current task nearly exactly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix memory leak when caching compiled queries that use closures over large objects",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent describes the same problem domain (compiled query caching holding references to large object graphs via closures), but the diff excerpt only shows cache lookup/insertion logic and does not actually address the memory leak from closure capture.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core throws InvalidOperationException: The specified field 'k__BackingField' could not be found",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve EF Core failing to locate a backing field for a property, but the candidate adds validation/error messaging via HasField configuration whereas the current task's \"k__BackingField\" error suggests an auto-property convention resolution issue\u2014same domain and closely related, though not necessarily the identical root cause.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "TPH (table-per-hierarchy) discriminator value not set when inserting derived entity via raw SQL",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent handles reading the discriminator when materializing (querying) a derived entity via raw SQL, whereas the current task concerns setting/writing the discriminator when inserting a derived entity\u2014opposite direction of data flow, but same TPH/discriminator + raw SQL domain.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Add support for KeylessEntityType in ExecuteDelete bulk operations",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent intersects the same code area (ExecuteDelete + keyless entity types) but takes the opposite approach\u2014it deliberately blocks keyless types with an error, whereas the task wants to add support for them.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "Regression: EF Core 8 breaks AddRange when list contains derived types mixed with base types in the same call",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same regression\u2014AddRange failing in EF Core 8 when base and derived types are mixed\u2014with a fix in StateManager that directly transfers to the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix SQL Server temporal table query: System-time BETWEEN generates wrong date boundary",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both involve SQL Server temporal table queries generating incorrect date/time boundaries in BETWEEN clauses, with the precedent fixing a UTC date-kind boundary issue that closely matches the current task's wrong date boundary problem.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "NpgsqlRange mapping breaks when EF Core model is used with both regular and temporal queries",
+      "human_grade": "irrelevant",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent touches the same file (NpgsqlTypeMappingSource) and NpgsqlRange mapping area, but it addresses SQL Server temporal table annotations\u2014a different, conflicting domain\u2014rather than PostgreSQL temporal query handling, so the fix logic does not directly transfer.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix [backport 8.0] Incorrect result for GroupBy with HasQueryFilter applied to the grouped entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both address the identical bug: incorrect GroupBy results when a query filter (HasQueryFilter/global query filter) is applied to the grouped entity, with the same 8.0 backport context and query filter ordering fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Incorrect result for GroupBy with HasQueryFilter applied to the grouped entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses GroupBy producing incorrect results due to query filter ordering relative to grouping, which matches the current task's core issue almost exactly.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Add IDbContextFactory<T>.CreateDbContext() support for scoped services in Blazor Server",
+      "human_grade": "irrelevant",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent directly addresses scoped service resolution in DbContextFactory for Blazor Server, matching the current task's problem and solution pattern (creating a scope to resolve services).",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-irrelevant"
+    },
+    {
+      "query": "Fix regression: owned entity with value object fails SaveChanges after update when using InMemory provider",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both address SaveChanges failures for owned entities with value objects on the InMemory provider after modification, and the fix targets the exact code path (Modified state handling in InMemoryTable).",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 7.0] NullReferenceException in Distinct() when applied to a projection containing null literals",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical problem (NullReferenceException in Distinct() with null literal projections) with a directly applicable fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "NullReferenceException in Distinct() when applied to a projection containing null literals",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent's problem statement is identical to the current task, and the diff directly handles the null literal case in projections that causes the Distinct() NullReferenceException.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ordering of interceptors when multiple ISaveChangesInterceptor implementations are registered",
+      "human_grade": "related",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent fixes interceptor ordering via a shared InterceptorAggregator that orders by `i.Order`, which directly applies to ordering ISaveChangesInterceptor implementations using the same aggregation mechanism.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "DbContext.Entry() throws ArgumentException when the entity has been detached and re-attached",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve entity tracking and identity map behavior in EF Core's ChangeTracking, but the precedent addresses identity conflicts (duplicate key tracking) rather than the Entry() exception on detach/re-attach scenarios.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix bug where HasDefaultValue() on a column is ignored when the column is part of an owned entity",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "The precedent addresses the same class of bug (default value config ignored for owned entity properties) but targets HasDefaultValueSql vs HasDefaultValue, and the diff modifies a column attribute convention rather than handling the Fluent API HasDefaultValue path, so the approach is closely analogous but not identical.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "OperationCanceledException not propagated correctly when cancellation token is passed to ToListAsync",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the same core issue\u2014cancellation exceptions being swallowed/mishandled during async DB queries\u2014and the fix (explicitly rethrowing OperationCanceledException in RelationalCommand) directly transfers to the ToListAsync cancellation propagation problem.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "clear-relevant"
+    },
+    {
+      "query": "EF Core migration: Cannot add foreign key constraint when using circular references in table relationships",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical problem\u2014foreign key constraint failures from circular table references during EF Core migrations\u2014and the deferred-operation handling directly transfers to the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 6.0] Wrong SQL generated for Any() on collection navigation when used inside a negated Where clause",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical problem (negated Where with Any() on collection navigation) on the same release/6.0 branch, with a directly applicable fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Wrong SQL generated for Any() on collection navigation when used inside a negated Where clause",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The problem statement matches verbatim and the diff directly addresses negated Any() translation on collection navigation, exactly the issue described.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix ValueConverter not applied to shadow property when running a projection query",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same issue\u2014ValueConverter being ignored for shadow properties during projection queries\u2014and the diff directly applies the converter in the projection visitor.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Performance: Add index hint support to FromSqlRaw queries in SQL Server provider",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve adding SQL Server query/index hints, but the precedent targets LINQ-generated SQL via annotations in the query generator, whereas the task concerns FromSqlRaw raw query strings\u2014same domain and goal but a different injection mechanism.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Incorrect SQL for IN expression when list contains both null and non-null values",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent handles IN/Contains expressions with mixed null and non-null values in the same EFCore InExpression.cs file, directly matching the current task.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core 8: Breaking change - GREATEST/LEAST functions now used in comparisons involving nullable types",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "Both involve EF Core 8's GREATEST/LEAST translation and nullable-type semantics handling via CASE-expression fallback, directly addressing the same problem area.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 9.0] EF Core migration: renaming a table fails when there are dependent FKs in SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The candidate precedent addresses the identical problem (EF Core table rename failing with dependent FKs in SQL Server), differing only in branch label (release/9.0 vs backport 9.0), with a directly transferable fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "EF Core migration: renaming a table fails when there are dependent FKs in SQL Server",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical problem (table rename failing with dependent FKs in SQL Server) and the diff directly implements the fix by dropping and recreating dependent foreign keys around the rename.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect translation of DateTime.AddYears when the year would exceed max DateTime value",
+      "human_grade": "related",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both tasks involve boundary/overflow handling for DateTime.AddX method translation in the same file and translator, but AddMonths overflow throwing isn't identical to AddYears exceeding max value, though the DATEADD translation pattern strongly transfers.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "GroupBy count is off by one when using HasQueryFilter and IgnoreQueryFilters()",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same bug: GroupBy aggregate count being incorrect due to query filter interaction with IgnoreQueryFilters, with a directly transferable fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "EF Core throws when deserializing owned entities from JSON column if the JSON array is empty",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same problem\u2014EF Core failing to deserialize owned entities from a JSON column when the array is empty\u2014with a fix that directly transfers.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix missing WHERE clause when using ExecuteDelete on a derived type in a TPT hierarchy",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses ExecuteDelete generating incorrect SQL for a TPT derived type, which is essentially the same problem (missing filter/WHERE handling for TPT inheritance) as the current task, with a directly transferable fix in the same code path.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix [backport 8.0] Skip navigation (many-to-many) throws when calling Include().ThenInclude() on the join entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the identical bug (skip navigation many-to-many throwing on Include().ThenInclude() on the join entity) for the same release line, differing only in backport vs. release branch.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Skip navigation (many-to-many) throws when calling Include().ThenInclude() on the join entity",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent's problem statement is identical to the current task, and the diff directly addresses skip navigation expansion in the relevant query visitor.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "backport"
+    },
+    {
+      "query": "Fix incorrect SQL when projecting a non-null constant into a nullable column in a subquery",
+      "human_grade": "direct-precedent",
+      "judge_grade": "direct-precedent",
+      "grade": "direct-precedent",
+      "rationale": "The precedent addresses the exact same problem\u2014incorrect null handling when projecting a non-null constant into a nullable column within a subquery\u2014with a directly transferable fix.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    },
+    {
+      "query": "Fix incorrect result when applying Where() after GroupBy().Select() with Count() in subquery context",
+      "human_grade": "direct-precedent",
+      "judge_grade": "related",
+      "grade": "related",
+      "rationale": "Both involve translating Where() applied after GroupBy in subquery contexts within the same EF Core relational query translator, but the candidate addresses HAVING clause generation specifically while the current task concerns incorrect results with Count() aggregation\u2014similar area and code path but not the identical problem.",
+      "model": "anthropic/claude-opus-4.8",
+      "stratum": "hard"
+    }
+  ],
+  "verdict": "advisory-only",
+  "calibration_note": "Recomputed offline from the same Sonnet/Opus gradings (no re-query). Binary collapse (D-16) dropped: the judge never emits 'irrelevant', so the collapsed kappa was degenerate (0.000). Reported kappa is the full 3-grade Cohen's kappa. Both models fall below the 0.6 floor -> advisory-only: the LLM judge may add evidence but never overrides the recall@k guardrail (Phase 11 JUDGE-02 contract)."
+}

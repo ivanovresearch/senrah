@@ -5,7 +5,7 @@ Tests the pure stdlib Cohen's kappa implementation against hand-computed cases.
 Also tests the escalation-ladder stub logic for Task 2.
 
 Cohen's kappa: k = (p_o - p_e) / (1 - p_e)
-Binary collapse: related + direct-precedent -> relevant; irrelevant stays irrelevant
+Multi-category (no collapse): irrelevant / related / direct-precedent are distinct.
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ class TestCohensKappaFormula:
         assert abs(result2 - 0.2) < 1e-9, f"Expected 0.2, got {result2}"
 
     def test_known_mixed_2x2(self):
-        """
+        r"""
         Hand-computed 2x2 case:
           Judge \ Human  | relevant | irrelevant
           relevant       |    8     |     2
@@ -130,25 +130,33 @@ class TestCohensKappaFormula:
         result = cohens_kappa([("relevant", "relevant")] * 5 + [("irrelevant", "irrelevant")] * 5)
         assert isinstance(result, float)
 
-    def test_accepts_3grade_with_binary_collapse(self):
+    def test_3grade_no_collapse_counts_related_vs_direct_as_disagreement(self):
         """
-        cohens_kappa collapses 3-grade (irrelevant/related/direct-precedent)
-        to binary (irrelevant vs relevant) before computing kappa.
+        cohens_kappa treats the full 3-grade scale with NO collapse, so a
+        (related, direct-precedent) pair is a DISAGREEMENT (not collapsed to
+        relevant/relevant).
 
-        Input pairs use raw grades; the function should collapse internally.
+        Hand-computed:
+          judge:  direct=5, related=10, irrelevant=5  (n=20)
+          human:  direct=10, related=5, irrelevant=5
+          agreements = 5 (direct,direct) + 5 (related,related) + 5 (irr,irr) = 15
+          p_o = 15/20 = 0.75
+          p_e = (5/20)(10/20) + (10/20)(5/20) + (5/20)(5/20)
+              = 0.125 + 0.125 + 0.0625 = 0.3125
+          k = (0.75 - 0.3125) / (1 - 0.3125) = 0.4375 / 0.6875 = 0.63636...
         """
         from eval.judge.kappa import cohens_kappa
 
-        # related and direct-precedent both collapse to 'relevant'
         pairs = (
             [("direct-precedent", "direct-precedent")] * 5
             + [("related", "related")] * 5
             + [("irrelevant", "irrelevant")] * 5
-            + [("related", "direct-precedent")] * 5  # both collapse -> relevant/relevant
+            + [("related", "direct-precedent")] * 5  # no collapse -> disagreement
         )
         result = cohens_kappa(pairs)
-        # p_o: all 20 pairs agree in binary: (rel,rel)*15 + (irr,irr)*5 = 20/20 = 1.0
-        assert result == 1.0, f"Expected 1.0 (all agree binary), got {result}"
+        assert abs(result - 0.4375 / 0.6875) < 1e-9, (
+            f"Expected ~0.636 (3-way, no collapse), got {result}"
+        )
 
 
 class TestKappaModuleConstraints:
