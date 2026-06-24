@@ -1,12 +1,9 @@
 """
-tests/integration/test_skill_repo_window.py -- Integration test stubs for DEPTH-02 SQL window filter.
+tests/integration/test_skill_repo_window.py -- Integration tests for DEPTH-02 SQL window filter.
 
 Tests that SkillRepo.search correctly filters results by merged_at when merged_before
-and merged_after parameters are supplied.
-
-These are WAVE-0 stubs; the merged_before/merged_after params are added to
-SkillRepo.search in Plan 02. All tests are xfail(strict=False) so they skip
-gracefully until the implementation exists.
+and merged_after parameters are supplied. Uses a real pgvector container via the
+session-scoped pg_dsn_migrated fixture.
 """
 
 from __future__ import annotations
@@ -16,7 +13,9 @@ from typing import Optional
 
 import psycopg
 import pytest
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import register_vector, register_vector_async
+
+from senrah.db.repos.skill import SkillRepo
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +25,7 @@ from pgvector.psycopg import register_vector
 
 @pytest.fixture(scope="module")
 def db_conn(pg_dsn_migrated: str):
-    """Open a module-scoped psycopg3 connection to the migrated test DB."""
+    """Open a module-scoped psycopg3 sync connection for data setup."""
     with psycopg.connect(pg_dsn_migrated) as conn:
         register_vector(conn)
         yield conn
@@ -114,35 +113,148 @@ def _insert_skill(
 
 
 # ---------------------------------------------------------------------------
+# Shared search helper (opens async connection per call)
+# ---------------------------------------------------------------------------
+
+
+async def _search(pg_dsn: str, query_vec: list[float], **kwargs) -> list:
+    """Run SkillRepo.search over an async connection and return results."""
+    async with await psycopg.AsyncConnection.connect(pg_dsn) as async_conn:
+        await register_vector_async(async_conn)
+        repo = SkillRepo(async_conn)
+        return await repo.search(query_vec=query_vec, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Tests: window ceiling (merged_before)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=False,
-    reason="DEPTH-02 not implemented -- merged_before param does not exist yet",
-)
-async def test_search_window_ceiling(db_conn, fake_embedder):
+async def test_search_window_ceiling(db_conn, pg_dsn_migrated: str, fake_embedder):
     """Insert two PRs around cutoff T; search with merged_before=T; only the pre-T PR appears."""
-    pytest.xfail("DEPTH-02 not implemented")
+    T = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    pre_T = T - timedelta(days=1)   # merged_at < T  -> should be included
+    post_T = T + timedelta(days=1)  # merged_at >= T -> should be excluded
+
+    project_id = _insert_project(db_conn, "window-ceiling-project")
+    repo_id = _insert_repository(db_conn, project_id, "test-org/window-ceiling-repo")
+
+    # Use high-similarity vectors so both PRs pass score_threshold=0.0
+    # (the window filter, not the score, determines what appears)
+    vec = [0.1] + [0.0] * 1535
+    magnitude = sum(x * x for x in vec) ** 0.5
+    unit_vec = [x / magnitude for x in vec]
+
+    pr_pre_id = _insert_pull_request(db_conn, repo_id, number=2001, merged_at=pre_T)
+    pr_post_id = _insert_pull_request(db_conn, repo_id, number=2002, merged_at=post_T)
+
+    _insert_skill(db_conn, pr_pre_id, unit_vec, unit_vec)
+    _insert_skill(db_conn, pr_post_id, unit_vec, unit_vec)
+
+    results = await _search(
+        pg_dsn_migrated,
+        query_vec=unit_vec,
+        top_n=5,
+        oversample_factor=5,
+        score_threshold=0.0,
+        problem_weight=0.7,
+        solution_weight=0.3,
+        merged_before=T,
+    )
+
+    result_numbers = [r.number for r in results]
+    assert 2001 in result_numbers, (
+        f"Expected PR #2001 (pre-T) in results, got: {result_numbers}"
+    )
+    assert 2002 not in result_numbers, (
+        f"PR #2002 (post-T) must be excluded by merged_before={T}, got: {result_numbers}"
+    )
 
 
-@pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=False,
-    reason="DEPTH-02 not implemented -- merged_after param does not exist yet",
-)
-async def test_search_window_floor(db_conn, fake_embedder):
+# ---------------------------------------------------------------------------
+# Tests: window floor (merged_after)
+# ---------------------------------------------------------------------------
+
+
+async def test_search_window_floor(db_conn, pg_dsn_migrated: str, fake_embedder):
     """Insert PRs at T-400days and T-100days; search with merged_after=T-200days; only the T-100days PR appears."""
-    pytest.xfail("DEPTH-02 not implemented")
+    T = datetime(2024, 12, 1, tzinfo=timezone.utc)
+    old_pr_date = T - timedelta(days=400)   # merged_at < floor -> should be excluded
+    new_pr_date = T - timedelta(days=100)   # merged_at >= floor -> should be included
+    floor = T - timedelta(days=200)
+
+    project_id = _insert_project(db_conn, "window-floor-project")
+    repo_id = _insert_repository(db_conn, project_id, "test-org/window-floor-repo")
+
+    vec = [0.2] + [0.0] * 1535
+    magnitude = sum(x * x for x in vec) ** 0.5
+    unit_vec = [x / magnitude for x in vec]
+
+    pr_old_id = _insert_pull_request(db_conn, repo_id, number=3001, merged_at=old_pr_date)
+    pr_new_id = _insert_pull_request(db_conn, repo_id, number=3002, merged_at=new_pr_date)
+
+    _insert_skill(db_conn, pr_old_id, unit_vec, unit_vec)
+    _insert_skill(db_conn, pr_new_id, unit_vec, unit_vec)
+
+    results = await _search(
+        pg_dsn_migrated,
+        query_vec=unit_vec,
+        top_n=5,
+        oversample_factor=5,
+        score_threshold=0.0,
+        problem_weight=0.7,
+        solution_weight=0.3,
+        merged_after=floor,
+    )
+
+    result_numbers = [r.number for r in results]
+    assert 3002 in result_numbers, (
+        f"Expected PR #3002 (new, within floor) in results, got: {result_numbers}"
+    )
+    assert 3001 not in result_numbers, (
+        f"PR #3001 (old, before floor) must be excluded by merged_after={floor}, got: {result_numbers}"
+    )
 
 
-@pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=False,
-    reason="DEPTH-02 not implemented -- marks intent for backward-compat assertion",
-)
-async def test_search_window_both_none(db_conn, fake_embedder):
+# ---------------------------------------------------------------------------
+# Tests: backward compat (both params None)
+# ---------------------------------------------------------------------------
+
+
+async def test_search_window_both_none(db_conn, pg_dsn_migrated: str, fake_embedder):
     """With both merged_before and merged_after omitted, existing search behavior is unchanged."""
-    pytest.xfail("DEPTH-02 not implemented")
+    project_id = _insert_project(db_conn, "window-both-none-project")
+    repo_id = _insert_repository(db_conn, project_id, "test-org/window-both-none-repo")
+
+    T = datetime(2024, 3, 15, tzinfo=timezone.utc)
+
+    vec = [0.3] + [0.0] * 1535
+    magnitude = sum(x * x for x in vec) ** 0.5
+    unit_vec = [x / magnitude for x in vec]
+
+    pr1_id = _insert_pull_request(db_conn, repo_id, number=4001, merged_at=T - timedelta(days=500))
+    pr2_id = _insert_pull_request(db_conn, repo_id, number=4002, merged_at=T)
+    pr3_id = _insert_pull_request(db_conn, repo_id, number=4003, merged_at=T + timedelta(days=200))
+
+    _insert_skill(db_conn, pr1_id, unit_vec, unit_vec)
+    _insert_skill(db_conn, pr2_id, unit_vec, unit_vec)
+    _insert_skill(db_conn, pr3_id, unit_vec, unit_vec)
+
+    # No merged_before / merged_after -> all three PRs must be reachable
+    results = await _search(
+        pg_dsn_migrated,
+        query_vec=unit_vec,
+        top_n=10,
+        oversample_factor=5,
+        score_threshold=0.0,
+        problem_weight=0.7,
+        solution_weight=0.3,
+        # merged_before and merged_after intentionally omitted
+    )
+
+    result_numbers = [r.number for r in results]
+    for expected in (4001, 4002, 4003):
+        assert expected in result_numbers, (
+            f"PR #{expected} should appear when no window filter is set, "
+            f"but result numbers were: {result_numbers}"
+        )
