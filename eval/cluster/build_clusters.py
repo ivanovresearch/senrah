@@ -296,6 +296,8 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build frozen clusters.json from the PR corpus.")
     parser.add_argument("--dry-run", action="store_true", help="Skip GitHub refetch step.")
     parser.add_argument("--dsn", default=None, help="PostgreSQL DSN (default: EnvSettings().database_url).")
+    parser.add_argument("--out", type=pathlib.Path, default=OUT,
+        help="Output path for cluster artifact (default: eval/cluster/clusters.json)")
     args = parser.parse_args(argv)
 
     if args.dsn:
@@ -304,7 +306,7 @@ def main(argv: list[str] | None = None) -> None:
         from senrah.config import EnvSettings
         dsn = EnvSettings().database_url
 
-    artifact = build_cluster_artifact(dsn, dry_run=args.dry_run)
+    artifact = build_cluster_artifact(dsn, dry_run=args.dry_run, out=args.out)
     n_clusters = len(artifact["clusters"])
     multi_member = sum(1 for c in artifact["clusters"] if len(c) > 1)
     print(
