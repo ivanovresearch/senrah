@@ -1,19 +1,29 @@
 """
-tests/unit/test_temporal_split.py -- Unit test stubs for DEPTH-03 temporal split logic.
+tests/unit/test_temporal_split.py -- Unit tests for DEPTH-03 temporal split logic.
 
 Tests split disjointness and answerable-set detection logic from
-eval.temporal.define_split (pure helper functions). These are WAVE-0 stubs;
-the target module is created in Plan 05. All tests are skipped until that
-module exists.
+eval.temporal.run_temporal_eval (_compute_relevant_set pure function).
+Hand-built fixtures only -- no DB, no disk I/O.
 """
 
 from __future__ import annotations
 
-import pytest
+from eval.temporal.run_temporal_eval import _compute_relevant_set
 
-pytestmark = pytest.mark.skip(
-    reason="define_split pure helpers not yet created -- Plan 05"
-)
+
+# ---------------------------------------------------------------------------
+# Minimal cluster map fixtures used by answerable-detection tests.
+# ---------------------------------------------------------------------------
+
+# cluster_map_empty: no clusters -- every PR is a singleton
+CLUSTER_MAP_EMPTY: dict = {"version": "fixture", "clusters": [], "edges": []}
+
+# cluster_map_with_pair: PRs 1001 and 3001 share a cluster
+CLUSTER_MAP_WITH_PAIR: dict = {
+    "version": "fixture",
+    "clusters": [[1001, 3001]],
+    "edges": [],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -24,78 +34,75 @@ pytestmark = pytest.mark.skip(
 class TestTemporalSplitDisjoint:
     """No query PR (merged_at > T) must appear in the corpus set (merged_at < T)."""
 
-    def test_query_prs_not_in_corpus(self):
+    def test_query_not_in_corpus(self):
         """
-        Given a fixture with known corpus PRs (merged_at < T) and query PRs
-        (merged_at > T), assert no query PR number appears in the corpus set.
+        Query PR has merged_at = T + 1 day; corpus PRs have merged_at < T.
+        Assert query pr_number is not in the set of corpus pr_numbers.
 
-        This verifies the core temporal-holdout invariant: strict disjointness
+        This verifies the temporal-holdout invariant: strict disjointness
         between the retrieval corpus and the evaluation query set.
+        Pure data check -- no DB needed.
         """
-        from datetime import datetime, timezone
+        from datetime import datetime, timezone, timedelta
 
         T = datetime(2023, 1, 1, tzinfo=timezone.utc)
 
-        # Corpus PRs: merged before T
         corpus_prs = [
             {"number": 1001, "merged_at": datetime(2022, 6, 1, tzinfo=timezone.utc)},
             {"number": 1002, "merged_at": datetime(2022, 12, 31, tzinfo=timezone.utc)},
         ]
-
-        # Query PRs: merged after T
-        query_prs = [
-            {"number": 2001, "merged_at": datetime(2023, 3, 1, tzinfo=timezone.utc)},
-            {"number": 2002, "merged_at": datetime(2023, 6, 1, tzinfo=timezone.utc)},
-        ]
+        query_pr = {"number": 2001, "merged_at": T + timedelta(days=1)}
 
         corpus_numbers = {pr["number"] for pr in corpus_prs}
-        query_numbers = {pr["number"] for pr in query_prs}
-
-        intersection = corpus_numbers & query_numbers
-        assert intersection == set(), (
-            f"Query PRs {intersection} appear in the corpus set -- temporal leak!"
+        assert query_pr["number"] not in corpus_numbers, (
+            f"Query PR {query_pr['number']} must not appear in corpus set {corpus_numbers}"
         )
 
 
 # ---------------------------------------------------------------------------
-# Test: answerable-set detection
+# Test: answerable-set detection via _compute_relevant_set
 # ---------------------------------------------------------------------------
 
 
 class TestAnswerableDetection:
-    """A query PR is answerable if and only if a corpus PR shares its linked_issue."""
+    """_compute_relevant_set returns relevant PR numbers based on linked_issue + cluster."""
 
-    def test_query_with_matching_corpus_issue_is_answerable(self):
+    def test_linked_issue_match_is_answerable(self):
         """
-        A query PR whose linked_issue matches a corpus PR's linked_issue is answerable.
+        Query has linked_issue="#42". A corpus PR also has linked_issue="#42".
+        _compute_relevant_set must return a non-empty set containing that corpus PR.
         """
         corpus_prs = [
             {"number": 1001, "linked_issue": "#42"},
             {"number": 1002, "linked_issue": "#99"},
         ]
-        query_pr = {"number": 2001, "linked_issue": "#42"}
-
-        corpus_issues = {pr["linked_issue"] for pr in corpus_prs if pr.get("linked_issue")}
-        is_answerable = query_pr.get("linked_issue") in corpus_issues
-
-        assert is_answerable is True, (
-            f"Query PR #{query_pr['number']} with linked_issue {query_pr['linked_issue']!r} "
-            f"should be answerable (corpus contains that issue)"
+        relevant = _compute_relevant_set(
+            pr_number=2001,
+            linked_issue="#42",
+            cluster_map=CLUSTER_MAP_EMPTY,
+            corpus_prs=corpus_prs,
+        )
+        assert len(relevant) > 0, (
+            "Expected non-empty relevant set: corpus PR 1001 shares linked_issue='#42'"
+        )
+        assert 1001 in relevant, (
+            f"Corpus PR 1001 (linked_issue='#42') must be in relevant set, got {relevant}"
         )
 
-    def test_query_without_matching_corpus_issue_is_not_answerable(self):
+    def test_no_match_is_not_answerable(self):
         """
-        A query PR whose linked_issue has no match in the corpus is not answerable.
+        Query has linked_issue="#42". Corpus only has PRs with linked_issue="#99".
+        No shared cluster. _compute_relevant_set must return empty set.
         """
         corpus_prs = [
-            {"number": 1001, "linked_issue": "#42"},
+            {"number": 1001, "linked_issue": "#99"},
         ]
-        query_pr = {"number": 2001, "linked_issue": "#999"}
-
-        corpus_issues = {pr["linked_issue"] for pr in corpus_prs if pr.get("linked_issue")}
-        is_answerable = query_pr.get("linked_issue") in corpus_issues
-
-        assert is_answerable is False, (
-            f"Query PR #{query_pr['number']} with linked_issue {query_pr['linked_issue']!r} "
-            f"should NOT be answerable (corpus does not contain that issue)"
+        relevant = _compute_relevant_set(
+            pr_number=2001,
+            linked_issue="#42",
+            cluster_map=CLUSTER_MAP_EMPTY,
+            corpus_prs=corpus_prs,
+        )
+        assert relevant == set(), (
+            f"Expected empty relevant set when no linked_issue match and no cluster match, got {relevant}"
         )
