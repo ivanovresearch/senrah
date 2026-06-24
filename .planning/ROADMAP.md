@@ -67,7 +67,12 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   2. `SkillRepo.search` accepts an additive, `None`-default `merged_at` corpus-window parameter; with it unset the search behaves exactly as before, and the MCP tool contract is unchanged (no version bump, connector untouched) — verifiable as the only `src/` change this milestone.
   3. A temporal-holdout split is defined with cutoff T chosen from the deep end (corpus strictly `merged_at < T`, query tasks strictly `merged_at > T`), with relevance labels derived from PR metadata only; an explicit leakage check confirms the split/label freeze on `merged_at` / original ingest timestamps, not current PR-body state.
   4. An automated temporal-holdout hit-rate@k scorer (coverage-at-threshold, applying the product `[BELOW THRESHOLD]` cutoff) is wired to the real `SkillRepo.search` path and produces a deterministic, reproducible number with bootstrap confidence intervals from a frozen index.
-**Plans**: TBD
+**Plans**: 5 plans
+  - [ ] 10-01-PLAN.md — Wave 0 test stubs: 4 failing-but-importable test files covering DEPTH-02/03/04 [wave 1]
+  - [ ] 10-02-PLAN.md — DEPTH-02: SkillRepo.search extension (merged_before/merged_after Optional[datetime] params) + unit + integration tests [wave 1, parallel]
+  - [ ] 10-03-PLAN.md — DEPTH-01 + DEPTH-03 (code): full --scope all ingest + index + clusters-deep.json + eval/temporal/define_split.py [wave 2, checkpoint]
+  - [ ] 10-04-PLAN.md — DEPTH-03 (gate): D-05 N-gate human checkpoint — run define_split.py, choose T, freeze query-set.json + manifest-temporal.json [wave 3, checkpoint]
+  - [ ] 10-05-PLAN.md — DEPTH-03/04 (instrument): bootstrap_ci.py + run_temporal_eval.py + green unit tests + baseline smoke run [wave 4]
 
 ### Phase 11: Depth Ladder + Judge + Decision Gate
 **Goal**: The depth experiment is run and a trustworthy decision-gate conclusion is recorded — depth is the lever (with a recommended ingest depth) or it is not (and BM25/connectors rise in priority).
