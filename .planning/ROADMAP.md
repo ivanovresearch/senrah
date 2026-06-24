@@ -68,7 +68,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   3. A temporal-holdout split is defined with cutoff T chosen from the deep end (corpus strictly `merged_at < T`, query tasks strictly `merged_at > T`), with relevance labels derived from PR metadata only; an explicit leakage check confirms the split/label freeze on `merged_at` / original ingest timestamps, not current PR-body state.
   4. An automated temporal-holdout hit-rate@k scorer (coverage-at-threshold, applying the product `[BELOW THRESHOLD]` cutoff) is wired to the real `SkillRepo.search` path and produces a deterministic, reproducible number with bootstrap confidence intervals from a frozen index.
 **Plans**: 5 plans
-  - [ ] 10-01-PLAN.md — Wave 0 test stubs: 4 failing-but-importable test files covering DEPTH-02/03/04 [wave 1]
+  - [x] 10-01-PLAN.md — Wave 0 test stubs: 4 failing-but-importable test files covering DEPTH-02/03/04 [wave 1]
   - [ ] 10-02-PLAN.md — DEPTH-02: SkillRepo.search extension (merged_before/merged_after Optional[datetime] params) + unit + integration tests [wave 1, parallel]
   - [ ] 10-03-PLAN.md — DEPTH-01 + DEPTH-03 (code): full --scope all ingest + index + clusters-deep.json + eval/temporal/define_split.py [wave 2, checkpoint]
   - [ ] 10-04-PLAN.md — DEPTH-03 (gate): D-05 N-gate human checkpoint — run define_split.py, choose T, freeze query-set.json + manifest-temporal.json [wave 3, checkpoint]
@@ -98,7 +98,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 7. Release Pipeline | v1.1 | Complete | 2026-06-18 |
 | 8. Documentation & Polish | v1.1 | Complete | 2026-06-14 |
 | 9. Eval v3 — Trustworthy Deduped Scale | v1.2 | Complete | 2026-06-24 |
-| 10. Temporal-Holdout Harness + Multi-Year Ingest | v1.2 | Not started | - |
+| 10. Temporal-Holdout Harness + Multi-Year Ingest | 1/5 | In Progress|  |
 | 11. Depth Ladder + Judge + Decision Gate | v1.2 | Not started | - |
 
 ---

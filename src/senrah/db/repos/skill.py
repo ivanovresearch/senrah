@@ -10,9 +10,12 @@ Provides:
   Persists both vector embeddings + model + version per skills row (D-08).
 
 - SkillRepo.search(query_vec, top_n, oversample_factor, score_threshold,
-                   problem_weight, solution_weight, repos=None)
+                   problem_weight, solution_weight, repos=None,
+                   merged_before=None, merged_after=None)
   Oversample ANN via <=> cosine (HNSW), Python re-rank by composite score,
   filter by threshold, return top_n SearchResult rows (D-09/D-10/D-11/STORE-03).
+  Optional merged_before/merged_after datetime params restrict the corpus window
+  (DEPTH-02). Both default to None; existing callers are unaffected.
 
 Security:
 - T-03-03 / T-04-01: All SQL uses parameterized %(name)s placeholders — no f-string SQL.
@@ -56,6 +59,26 @@ class SearchResult:
     problem_sim: float
     solution_sim: float
     score: float
+
+
+def _build_window_filters(
+    repos: Optional[list[str]],
+    merged_before: Optional[datetime],
+    merged_after: Optional[datetime],
+) -> tuple[str, str, str]:
+    """Return (repo_filter, before_filter, after_filter) SQL fragment strings.
+
+    All returned strings are static text containing only %(name)s placeholders —
+    no user data is interpolated (T-10-01). The actual values go into the params
+    dict assembled by the caller (SkillRepo.search).
+
+    This pure helper exists so unit tests can verify filter-string assembly
+    without a real DB connection or async machinery.
+    """
+    repo_filter = "AND r.name = ANY(%(repos)s)" if repos is not None else ""
+    before_filter = "AND pr.merged_at < %(merged_before)s" if merged_before is not None else ""
+    after_filter = "AND pr.merged_at >= %(merged_after)s" if merged_after is not None else ""
+    return repo_filter, before_filter, after_filter
 
 
 class SkillRepo:
@@ -195,6 +218,8 @@ class SkillRepo:
         problem_weight: float,
         solution_weight: float,
         repos: Optional[list[str]] = None,
+        merged_before: Optional[datetime] = None,
+        merged_after: Optional[datetime] = None,
     ) -> list[SearchResult]:
         """Oversample ANN search via <=> cosine distance, then Python re-rank.
 
@@ -217,6 +242,8 @@ class SkillRepo:
         - T-04-01: query_vec and repos passed as psycopg3 bind params (%(vec)s /
           %(repos)s). No f-string interpolation in SQL.
         - T-04-02: <=> matches vector_cosine_ops HNSW index; cosine distance only.
+        - T-10-01: merged_before/merged_after are datetime objects passed as bind
+          params — the filter strings are static text with no interpolated values.
 
         Args:
             query_vec: 1536-dim embedding vector for the search query.
@@ -227,6 +254,12 @@ class SkillRepo:
             solution_weight: Weight for solution similarity in composite score (D-09).
             repos: Optional list of repo names (e.g. ["owner/repo"]) to restrict
                    search to. None means all repos in the project (SEARCH-03 groundwork).
+            merged_before: Optional datetime upper bound (exclusive). Only PRs with
+                merged_at < merged_before are returned. None means no ceiling.
+                Used by the temporal holdout harness (DEPTH-02).
+            merged_after: Optional datetime lower bound (inclusive). Only PRs with
+                merged_at >= merged_after are returned. None means no floor.
+                Used by the temporal holdout harness (DEPTH-02).
 
         Returns:
             List of SearchResult objects, sorted by score descending, at most top_n.
@@ -236,6 +269,11 @@ class SkillRepo:
         # Build optional WHERE clause for repo filtering (SEARCH-03 groundwork).
         # This is safe: the clause is static text; repos is a bind parameter.
         repo_filter = "AND r.name = ANY(%(repos)s)" if repos is not None else ""
+
+        # Build optional WHERE fragments for temporal corpus window (DEPTH-02).
+        # T-10-01: filter strings are static text only; datetime values go in params.
+        before_filter = "AND pr.merged_at < %(merged_before)s" if merged_before is not None else ""
+        after_filter = "AND pr.merged_at >= %(merged_after)s" if merged_after is not None else ""
 
         # CRITICAL: Use <=> (cosine distance) — MUST match vector_cosine_ops index.
         # 1 - distance = cosine similarity (T-04-02 / Pitfall 1).
@@ -261,6 +299,8 @@ class SkillRepo:
             WHERE  sk.problem_embedding IS NOT NULL
               AND  sk.solution_embedding IS NOT NULL
               {repo_filter}
+              {before_filter}
+              {after_filter}
             ORDER BY sk.problem_embedding <=> %(vec)s::vector
             LIMIT %(limit)s
         """
@@ -268,6 +308,10 @@ class SkillRepo:
         params: dict = {"vec": query_vec, "limit": limit}
         if repos is not None:
             params["repos"] = repos
+        if merged_before is not None:
+            params["merged_before"] = merged_before
+        if merged_after is not None:
+            params["merged_after"] = merged_after
 
         async with self._conn.cursor() as cur:
             await cur.execute(query, params)

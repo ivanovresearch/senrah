@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Corpus Depth
-status: planning
-last_updated: "2026-06-24T12:40:03.660Z"
+status: executing
+last_updated: "2026-06-24T15:33:13.277Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 9
+  completed_plans: 5
   percent: 33
 ---
 
@@ -27,16 +27,16 @@ See: .planning/PROJECT.md (updated 2026-06-22 after v1.2 scoping)
 
 **Core Value:** An AI agent solving a task in this codebase can retrieve the most relevant real merged-PR precedents (problem + the diff that solved it) via MCP, ranked by semantic similarity. If everything else fails, that retrieval must work.
 
-**Current Focus:** Phase 10 — temporal holdout harness + multi year ingest
+**Current Focus:** Phase 10 — temporal-holdout-harness-multi-year-ingest
 
 ---
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-24
+Phase: 10 (temporal-holdout-harness-multi-year-ingest) — EXECUTING
+Plan: 2 of 5
+Status: Executing Phase 10
+Last activity: 2026-06-24 -- 10-01 complete (Wave-0 stubs)
 
 ## Performance Metrics
 
@@ -44,8 +44,8 @@ Last activity: 2026-06-24
 |--------|-------|
 | Phases complete | 0 / 3 (v1.2) |
 | Requirements delivered | 1 / 13 (v1.2) — JUDGE-01 |
-| Plans complete | 4 / 4 (Phase 09 -- complete) |
-| Unit tests | 302 passing |
+| Plans complete | 5 / 9 (Phase 09 x4 + Phase 10 plan 01) |
+| Unit tests | 318 passing (302 + 16 new stubs/xfail) |
 
 ---
 
@@ -112,6 +112,7 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 | RawPR.changed_files (int) added for giant-by-file count | Design B yields files_changed=[]; without the int the giant filter silently no-ops in production | 3 |
 | overlap_margin = tunable floor (ingest.overlap_margin_seconds 3600s), run-duration derivation deferred | op-state has no run-duration column; full derivation needs migration 0003 — accepted floor for MVP (user decision) | 3 |
 | _binary_collapse frozenset must include "relevant" (already-binary) to avoid double-collapse | Test fixtures use already-binary "relevant" grade; excluding it collapses all relevant pairs to "irrelevant" -> kappa always 1.0 | 9 |
+| Wave-0 stubs use module-level skip for missing modules (bootstrap_ci, define_split) and xfail(strict=False) for missing params (merged_before/after); vacuous if-guards replaced with assert-presence | if-guard pattern silently passes when params absent, producing XPASS instead of XFAIL -- defeat the purpose of Wave-0 stubs | 10 |
 | grade_fn resolved via sys.modules at _score_gold call time to support monkeypatch | Direct function reference at call site bypasses monkeypatch; sys.modules lookup at call time enables test stubs without dependency injection | 9 |
 | anthropic imported lazily in grade_pair (not at module top) | eval.judge.judge must be importable in tests without pip install senrah[eval]; deferred import is the idiomatic pattern | 9 |
 | Per-cluster deduplication: hit on any cluster member = one cluster hit; distractors per-cluster (EVAL-02 / D-08) | Divergence fixture demonstrates per-PR=2 vs per-cluster=1 for two cluster members in top-k | 9 |
@@ -143,12 +144,12 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 ### Last Session
 
 - **Date:** 2026-06-24
-- **Action:** Closed 09-03-PLAN.md (EVAL-04): wrote SUMMARY.md, updated STATE.md + ROADMAP.md. All Phase 09 plans complete.
-- **Outcome:** manifest-v3.json (v3-knownitem-deduped, 218 queries, cluster-sourced relevant_prs, 2 EVAL-03 corrections) + results-v3-deduped.json (recall@1=0.711 / recall@5=0.899 / MRR@10=0.794) frozen. 17 integration tests pass. Phase 09 complete -- EVAL-01 through EVAL-04 and JUDGE-01 all delivered.
+- **Action:** Completed 10-01-PLAN.md: Wave-0 test stubs for DEPTH-02/03/04 (4 files, 2 commits).
+- **Outcome:** 4 stub files created (test_skill_repo_search_window, test_bootstrap_ci, test_temporal_split, test_skill_repo_window). All stubs xfail or skip cleanly. 318 unit tests pass (302 existing + 0 broken). Integration stubs xfail correctly. Plans 02/05 can now reference these files.
 
 ### Resumption Prompt
 
-> Phase 09 complete (EVAL-01..04 + JUDGE-01). The trustworthy deduped baseline exists. Phase 10 (Temporal-Holdout Harness + Multi-Year Ingest) is next. Start with /gsd-plan-phase 10.
+> Phase 09 complete (EVAL-01..04 + JUDGE-01). The trustworthy deduped baseline exists. Phase 10 (Temporal-Holdout Harness + Multi-Year Ingest) is planned — 5 plans (10-01..10-05) written and reviewed. Start execution with /gsd-execute-phase 10. Note: 10-03 (1–2h `--scope all` ingest) and 10-04 (D-05 T-choice) are blocking human checkpoints.
 
 ---
 
@@ -175,4 +176,4 @@ Items acknowledged and deferred at v1.0 milestone close on 2026-06-12:
 
 ## Operator Next Steps
 
-- Plan Phase 9 with `/gsd-plan-phase 9`.
+- Execute Phase 10 with `/gsd-execute-phase 10` (10-03 and 10-04 are blocking human checkpoints — multi-year ingest + T-choice).
