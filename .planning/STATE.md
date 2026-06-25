@@ -46,7 +46,10 @@ Last activity: 2026-06-25 -- deep ingest 487->8449, clusters-deep built (397 mul
   - A (label too strict): metadata-linked label misses unlinked convention-transfer precedents (the LLM judge — now advisory-only — was meant to catch these). Then temporal is RESCUABLE via a leak-free wider relevance, NOT via known-item.
   - B (substantive): precedents in forward flow are genuinely rare; n=5 ~ true → valid NEGATIVE experimental result (coverage lever structurally small), record as findings.
 - ⚠ known-item recall@k measures ranking QUALITY not COVERAGE, and on deep corpus recall FALLS from distractors — that is WHY temporal-holdout exists. Promoting known-item to PRIMARY depth instrument CONTRADICTS the phase's original metric separation; only do it eyes-open, never as cosmetic rescope.
-- NEXT (in progress): A-vs-B probe — random 30 of the 278 post-T(365) tasks, manually check if a real pre-T precedent exists that the strict label missed. ≥~8/30 → A (widen relevance). 0–1/30 → B (record negative result). Decide pivot/freeze/redesign ONLY after probe.
+- PROBE DONE (2026-06-25): A-vs-B on random 30 post-T(365). Genuine pre-T precedent for ≥14/30 (strict) … ~29/30 (lenient) — metadata label undercounts ~14–29×. **Verdict A** (label too narrow, temporal rescuable). NOT pivoting to known-item.
+- PROTOCOL CONVERGED + COMMITTED (9797aae): leak-aware TREC-pooled judge-labeled relevance. Decisions: D1=TREC union BM25(enriched)∪evaluated-embedding (BM25-only §6.2 recall only 72%, embedding contributes ~28% semantic-only precedents); D4=κ-fallback decided by fact. Independence lives in the JUDGMENT not the pool. See 10-TEMPORAL-RELEVANCE-PROTOCOL.md §0-§8.
+- NEXT BUILD (autonomous → human gate): (1) BM25 pool module + TREC pool gen on deepest corpus; (2) §6 checks (BM25⊥age depth-neutrality, union pool-recall on 30 probe) — show before judge; (3) **HUMAN GATE: blind gold ~60-100 (task,candidate) pairs, user labels yes/no**; (4) judge run → κ in new framing → D4 decision; (5) judge labels full pool → freeze query-set-judged.json; (6) extend run_temporal_eval → rung ladder + bootstrap CI.
+- ⚠ This re-scopes 10-04 (relevance def) and pulls JUDGE into Phase 10 (was conditional Phase 11) — recorded eyes-open in ROADMAP + protocol.
 
 **Done / blocking (code):**
 - ✅ 10-01: 4 Wave-0 test stubs (2c7a390, cecb66d)
