@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Corpus Depth
 status: executing
-last_updated: "2026-06-24T15:33:13.277Z"
+last_updated: "2026-06-24T15:41:31.622Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 33
 ---
 
@@ -33,19 +33,50 @@ See: .planning/PROJECT.md (updated 2026-06-22 after v1.2 scoping)
 
 ## Current Position
 
-Phase: 10 (temporal-holdout-harness-multi-year-ingest) — EXECUTING
-Plan: 2 of 5
-Status: Executing Phase 10
-Last activity: 2026-06-24 -- 10-01 complete (Wave-0 stubs)
+Phase: 10 (temporal-holdout-harness-multi-year-ingest) — EXECUTING (ingest done; T-gate BLOCKED on power finding)
+Plan: 10-03 ingest+clusters-deep done; 10-04 T-gate PAUSED pending A-vs-B precedent probe
+Status: Ingest+index done (efcore 8449/8449). clusters-deep.json frozen. T-LADDER SHOWS temporal-holdout UNDERPOWERED (n_answerable=5 at T=365; 4 at 455/545; floor=80). Decision paused for A-vs-B probe.
+Last activity: 2026-06-25 -- deep ingest 487->8449, clusters-deep built (397 multi-member), T-ladder computed; n_answerable=5
+
+**⚠ OPEN FINDING — temporal-holdout power (do not freeze T blindly):**
+- T-ladder exact (full clusters-deep.json), gate metric (2)=n_answerable (relevant precedent STRICTLY pre-T):
+  - T=365: (1) post-T-w/issue=278 | (2) n_answerable=5 (linked 2 + cluster 5)
+  - T=455: 306 | 4    · T=545: 345 | 4   — ALL ≪ floor 80
+- n=5 has TWO opposite explanations; pivot-to-known-item HIDES the distinction (and reverses the phase's core metric separation):
+  - A (label too strict): metadata-linked label misses unlinked convention-transfer precedents (the LLM judge — now advisory-only — was meant to catch these). Then temporal is RESCUABLE via a leak-free wider relevance, NOT via known-item.
+  - B (substantive): precedents in forward flow are genuinely rare; n=5 ~ true → valid NEGATIVE experimental result (coverage lever structurally small), record as findings.
+- ⚠ known-item recall@k measures ranking QUALITY not COVERAGE, and on deep corpus recall FALLS from distractors — that is WHY temporal-holdout exists. Promoting known-item to PRIMARY depth instrument CONTRADICTS the phase's original metric separation; only do it eyes-open, never as cosmetic rescope.
+- NEXT (in progress): A-vs-B probe — random 30 of the 278 post-T(365) tasks, manually check if a real pre-T precedent exists that the strict label missed. ≥~8/30 → A (widen relevance). 0–1/30 → B (record negative result). Decide pivot/freeze/redesign ONLY after probe.
+
+**Done / blocking (code):**
+- ✅ 10-01: 4 Wave-0 test stubs (2c7a390, cecb66d)
+- ✅ 10-02: SkillRepo.search merged_before/merged_after window params, DEPTH-02 (9f953dd, 94195cf); MCP/CLI unchanged
+- ✅ 10-03 CODE: build_clusters.py --out (2a54ce9) + define_split.py + __init__.py (455d03a)
+- ✅ 10-03 ARTIFACT: deep ingest (efcore 487->8449) + clusters-deep.json (9594 prs, 397 multi-member, hash 5bc78aab); clusters.json UNCHANGED (e5ed8bdb). NOT yet committed; 10-03 SUMMARY not written.
+- ✅ 10-05 CODE: bootstrap_ci.py (9d766ef) + run_temporal_eval.py + green unit tests (18b5e36); 335 unit tests pass
+- ⏸ 10-04 T-gate: PAUSED on the power finding above (do NOT freeze T at n=5 blindly)
+- ⏸ 10-05 Task 3 smoke: after T-gate resolved
+
+**RESUME — what's done / what's blocking:**
+- ✅ 10-01: 4 Wave-0 test stubs (commits 2c7a390, cecb66d)
+- ✅ 10-02: SkillRepo.search merged_before/merged_after window params, DEPTH-02 (commits 9f953dd, 94195cf); MCP/CLI call sites unchanged
+- ✅ 10-03 CODE: build_clusters.py --out flag (2a54ce9) + eval/temporal/define_split.py + __init__.py (455d03a); imports OK
+- ✅ 10-05 CODE: bootstrap_ci.py (9d766ef) + run_temporal_eval.py + green unit tests (18b5e36); both import without deferred artifacts; 335 unit tests pass
+- ⏸ 10-03 Task 1 (BLOCKING, human-action): `senrah ingest --scope all -` then `senrah index` (~1-2h live). DB ready on :5433 (.env fixed). Baseline efcore=487 PR/487 skills. Record after counts.
+- ⏸ 10-03 Task 2 artifact: `python -m eval.cluster.build_clusters --out eval/cluster/clusters-deep.json` (needs deep corpus; commit it — tracked like clusters.json); then write 10-03-SUMMARY.md and mark 10-03 complete.
+- ⏸ 10-04 (D-05 T-gate, human-verify): run define_split.py, choose T (365→455→545 until N≥80), freeze query-set.json + manifest-temporal.json; write 10-04-SUMMARY.md
+- ⏸ 10-05 Task 3 (human-verify smoke): `python eval/temporal/run_temporal_eval.py --rung-days 0 --tag baseline` → temporal-results-baseline.json; write 10-05-SUMMARY.md
+
+Resume after ingest: re-run /gsd-execute-phase 10 (skips 10-01/10-02; resumes 10-03 artifact freeze → 10-04 → 10-05 smoke). Only the ingest, 2 human gates, and 3 SUMMARYs remain.
 
 ## Performance Metrics
 
 | Metric | Value |
 |--------|-------|
 | Phases complete | 0 / 3 (v1.2) |
-| Requirements delivered | 1 / 13 (v1.2) — JUDGE-01 |
-| Plans complete | 5 / 9 (Phase 09 x4 + Phase 10 plan 01) |
-| Unit tests | 318 passing (302 + 16 new stubs/xfail) |
+| Requirements delivered | 2 / 13 (v1.2) — JUDGE-01, DEPTH-02 |
+| Plans complete | 6 / 9 (Phase 09 x4 + Phase 10 plans 01-02) |
+| Unit tests | 327 passing (302 + 25 new; 0 xfail for window params) |
 
 ---
 
@@ -113,6 +144,7 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 | overlap_margin = tunable floor (ingest.overlap_margin_seconds 3600s), run-duration derivation deferred | op-state has no run-duration column; full derivation needs migration 0003 — accepted floor for MVP (user decision) | 3 |
 | _binary_collapse frozenset must include "relevant" (already-binary) to avoid double-collapse | Test fixtures use already-binary "relevant" grade; excluding it collapses all relevant pairs to "irrelevant" -> kappa always 1.0 | 9 |
 | Wave-0 stubs use module-level skip for missing modules (bootstrap_ci, define_split) and xfail(strict=False) for missing params (merged_before/after); vacuous if-guards replaced with assert-presence | if-guard pattern silently passes when params absent, producing XPASS instead of XFAIL -- defeat the purpose of Wave-0 stubs | 10 |
+| Extracted _build_window_filters() as module-level pure function to make filter-string assembly unit-testable without async/DB machinery | Direct test of filter strings requires no DB connection; extraction is the cleanest seam for T-10-01 verification | 10 |
 | grade_fn resolved via sys.modules at _score_gold call time to support monkeypatch | Direct function reference at call site bypasses monkeypatch; sys.modules lookup at call time enables test stubs without dependency injection | 9 |
 | anthropic imported lazily in grade_pair (not at module top) | eval.judge.judge must be importable in tests without pip install senrah[eval]; deferred import is the idiomatic pattern | 9 |
 | Per-cluster deduplication: hit on any cluster member = one cluster hit; distractors per-cluster (EVAL-02 / D-08) | Divergence fixture demonstrates per-PR=2 vs per-cluster=1 for two cluster members in top-k | 9 |
@@ -144,8 +176,8 @@ The hard dependency drives the order: **Eval v3 (EVAL-*) must land and freeze be
 ### Last Session
 
 - **Date:** 2026-06-24
-- **Action:** Completed 10-01-PLAN.md: Wave-0 test stubs for DEPTH-02/03/04 (4 files, 2 commits).
-- **Outcome:** 4 stub files created (test_skill_repo_search_window, test_bootstrap_ci, test_temporal_split, test_skill_repo_window). All stubs xfail or skip cleanly. 318 unit tests pass (302 existing + 0 broken). Integration stubs xfail correctly. Plans 02/05 can now reference these files.
+- **Action:** Completed 10-02-PLAN.md: DEPTH-02 window params on SkillRepo.search (2 tasks, 2 commits).
+- **Outcome:** merged_before/merged_after Optional[datetime] params added to SkillRepo.search; _build_window_filters() helper extracted; all 327 unit tests pass; 3 integration window tests pass. MCP contract unchanged (T-10-02 verified). DEPTH-02 delivered.
 
 ### Resumption Prompt
 

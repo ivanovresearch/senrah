@@ -53,12 +53,12 @@ the MCP tool. Senrah ships no LLM client (the judge is a harness tool).
   `--scope all` into the existing raw store and index, with no data loss and no
   rate-limit throttle work (the 3.5-month ceiling was an assumption, not a
   blocker).
-- [ ] **DEPTH-02**: `SkillRepo.search` accepts an additive, `None`-default
+- [x] **DEPTH-02**: `SkillRepo.search` accepts an additive, `None`-default
   `merged_at` corpus-window parameter (corpus = PRs `merged_at < T [AND >=
   floor]`) that materializes every depth-ladder rung from the **one** ingest +
   **one** index; the parameter is never exposed through the MCP tool (no
   contract bump).
-- [ ] **DEPTH-03**: A **temporal-holdout split** is defined — cutoff T chosen
+- [x] **DEPTH-03**: A **temporal-holdout split** is defined — cutoff T chosen
   from the deep end (2–3yr before T = deepest corpus rung; 1yr+ after T =
   query-set); corpus is strictly `merged_at < T`, query tasks strictly
   `merged_at > T`; the relevance label is derived from PR metadata only
@@ -67,7 +67,7 @@ the MCP tool. Senrah ships no LLM client (the judge is a harness tool).
   `merged_at` / original ingest timestamps, **not** current PR-body state, so a
   description edited after T cannot retroactively contaminate the pre-T corpus
   (closes the "leak is the curve" risk).
-- [ ] **DEPTH-04**: An **automated temporal-holdout hit-rate@k scorer**
+- [x] **DEPTH-04**: An **automated temporal-holdout hit-rate@k scorer**
   (PRIMARY / GATE metric) measures **coverage-at-threshold** — did any relevant
   earlier precedent surface in top-k **above the product `[BELOW THRESHOLD]`
   cutoff** (not bare recall@k, which would measure the wrong axis) — wired to
@@ -154,9 +154,9 @@ dependencies] eval` extra so `pip install senrah` stays LLM-free.*
 | EVAL-03 | Phase 9 | Pending |
 | EVAL-04 | Phase 9 | Pending |
 | DEPTH-01 | Phase 10 | Pending |
-| DEPTH-02 | Phase 10 | Pending |
-| DEPTH-03 | Phase 10 | Pending |
-| DEPTH-04 | Phase 10 | Pending |
+| DEPTH-02 | Phase 10 | Complete |
+| DEPTH-03 | Phase 10 | Complete |
+| DEPTH-04 | Phase 10 | Complete |
 | DEPTH-05 | Phase 11 | Pending |
 | DEPTH-06 | Phase 11 | Pending |
 | DEPTH-07 | Phase 11 | Pending |

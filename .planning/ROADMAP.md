@@ -69,10 +69,10 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
   4. An automated temporal-holdout hit-rate@k scorer (coverage-at-threshold, applying the product `[BELOW THRESHOLD]` cutoff) is wired to the real `SkillRepo.search` path and produces a deterministic, reproducible number with bootstrap confidence intervals from a frozen index.
 **Plans**: 5 plans
   - [x] 10-01-PLAN.md — Wave 0 test stubs: 4 failing-but-importable test files covering DEPTH-02/03/04 [wave 1]
-  - [ ] 10-02-PLAN.md — DEPTH-02: SkillRepo.search extension (merged_before/merged_after Optional[datetime] params) + unit + integration tests [wave 1, parallel]
-  - [ ] 10-03-PLAN.md — DEPTH-01 + DEPTH-03 (code): full --scope all ingest + index + clusters-deep.json + eval/temporal/define_split.py [wave 2, checkpoint]
-  - [ ] 10-04-PLAN.md — DEPTH-03 (gate): D-05 N-gate human checkpoint — run define_split.py, choose T, freeze query-set.json + manifest-temporal.json [wave 3, checkpoint]
-  - [ ] 10-05-PLAN.md — DEPTH-03/04 (instrument): bootstrap_ci.py + run_temporal_eval.py + green unit tests + baseline smoke run [wave 4]
+  - [x] 10-02-PLAN.md — DEPTH-02: SkillRepo.search extension (merged_before/merged_after Optional[datetime] params) + unit + integration tests [wave 1, parallel]
+  - [x] 10-03-PLAN.md — DEPTH-01 + DEPTH-03 (code): full --scope all ingest (efcore 487→8449) + index + clusters-deep.json (9594 prs, 397 multi-member) + eval/temporal/define_split.py [wave 2, checkpoint] — completed 2026-06-25
+  - [ ] 10-04-PLAN.md — DEPTH-03 (gate) — ⚠ RE-SCOPED 2026-06-25: metadata-only answerable gives n=5/278 (underpowered). A-vs-B probe → label too narrow (verdict A). New leak-aware TREC-pooled judge-labeled relevance protocol (10-TEMPORAL-RELEVANCE-PROTOCOL.md); pulls JUDGE into Phase 10. [wave 3, checkpoint]
+  - [ ] 10-05-PLAN.md — DEPTH-03/04 (instrument): bootstrap_ci.py + run_temporal_eval.py + green unit tests + baseline smoke run [wave 4] — scorer needs extension for judged labels
 
 ### Phase 11: Depth Ladder + Judge + Decision Gate
 **Goal**: The depth experiment is run and a trustworthy decision-gate conclusion is recorded — depth is the lever (with a recommended ingest depth) or it is not (and BM25/connectors rise in priority).
@@ -98,7 +98,7 @@ Full details: [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 | 7. Release Pipeline | v1.1 | Complete | 2026-06-18 |
 | 8. Documentation & Polish | v1.1 | Complete | 2026-06-14 |
 | 9. Eval v3 — Trustworthy Deduped Scale | v1.2 | Complete | 2026-06-24 |
-| 10. Temporal-Holdout Harness + Multi-Year Ingest | 1/5 | In Progress|  |
+| 10. Temporal-Holdout Harness + Multi-Year Ingest | 2/5 | In Progress|  |
 | 11. Depth Ladder + Judge + Decision Gate | v1.2 | Not started | - |
 
 ---
