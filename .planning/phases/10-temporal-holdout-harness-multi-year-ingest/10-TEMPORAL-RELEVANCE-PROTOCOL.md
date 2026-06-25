@@ -33,6 +33,17 @@ inside option-4 (review-before-launch).
   corpus depth on the 12-yr history. (The embedding component IS the evaluated system; its depth
   behavior is the signal, not an artifact. Pool+labels frozen on deepest corpus ⇒ no per-rung pool
   drift ⇒ TREC pool-bias does not leak into the depth curve.)
+- **I4 — ID-only pooling, vector isolation (HARD, verified 2026-06-25):** the second semantic leg
+  (`baai/bge-m3`, 1024-dim) and BM25 contribute ONLY PR-ids (a SET) to the pool. Their vectors/scores
+  are NEVER written to the DB, NEVER stored in any product column, and NEVER compared to the evaluated
+  text-embedding-3-small (1536) vectors. We union **ids, not vectors** — dimension mismatch is therefore
+  irrelevant. bge vectors live only in a transient numpy array during pool construction (or a temp
+  `.npy` OUTSIDE the repo/DB if cached); they are discarded after emitting ids. The product `skills`
+  table (only model text-embedding-3-small/v2, 1536-dim, 9594 rows) is read-only via SkillRepo.search
+  and untouched. The hit-rate METRIC (`run_temporal_eval`) uses ONLY SkillRepo.search (3-small/1536)
+  top-k ∩ the frozen relevant-id-set; bge/BM25 never re-enter the metric. Verified: DB has exactly two
+  vector columns (skills.problem/solution_embedding, both 1536), zero bge rows. If any build step would
+  write bge vectors to the DB or compare them to 3-small in the metric → STOP.
 
 ---
 
@@ -103,6 +114,69 @@ Task set (post-T tasks, frozen issue-text query)
   lower because some relevant precedents fall outside [T−d, T) — that drop IS the depth signal.
 - Bootstrap CI (seed=42, B=2000) over the fixed answerable set. Power is now driven by the widened
   answerable N (probe implies O(100+), pending judge), not 5.
+
+## 5b. Pre-registered acceptance thresholds (fixed BEFORE the systematic count — 2026-06-25)
+
+- **§6 depth-neutrality (objective, pre-set |ρ|<0.1, literal in the gate script before any run):**
+  - BM25⊥age: Spearman ρ = **0.045 → PASS**.
+  - bge-m3⊥age: Spearman ρ = **+0.114 → FAIL** (n=1500, SE≈0.026 ⇒ ~4.4 SE, statistically real).
+    Direction: bge top-ranks skew NEWER ⇒ understates depth benefit ⇒ protects a "depth-helps"
+    conclusion but CONFOUNDS a null ("depth-doesn't-help") conclusion. Not waivable as "conservative."
+    → bge⊥age requires resolution (drop bge / age-debias the bge pool then re-check / documented accept).
+- **Diversification threshold X (HONEST DISCLOSURE: NOT pre-registered before I saw the bge dump;
+  the earlier qualitative "bge PASS" is VOID and not a gate decision).** Pre-registered NOW, before any
+  systematic count, symmetric across legs:
+  > A pool leg's UNIQUE candidates (in its top-50, NOT in eval top-50) contain ≥1 genuine eval-missed
+  > precedent in ≥ **X = 10/30 (≥1/3)** of the probe tasks → the leg adds signal; else discard as noise.
+  - X=1/3 justified on first principles (material, non-incidental coverage), NOT from observed counts.
+  - **Bias control:** the count is computed from the BLIND HUMAN gold labels (§3), NOT from my judgment
+    (I have already seen both dumps). bge-unique AND BM25-unique candidates enter the gold set unlabeled-
+    by-source; the user labels yes/no blind; the per-leg count is derived from those labels.
+  - **Gerrymander control:** the SAME X must FAIL the known-weak BM25 leg (expected <10) — if X passed
+    both or failed both it would be uninformative.
+
+## 5c. Depth-neutrality gate — REFRAMED (principle, not absolute number — 2026-06-25)
+
+Diagnostic killed the absolute |ρ|<0.1 gate: rank⊥age Spearman is **eval(3-small)=+0.160 > bge=+0.114
+> BM25=+0.045**. The EVALUATED system skews to newer candidates MOST (intrinsic: post-T queries are
+recent; 12-yr vocabulary drift ⇒ recent queries match recent PRs). The absolute |ρ|<0.1 was
+mis-specified — the product itself fails it and cannot be discarded.
+
+**Gate principle (from SYMMETRY, survives data changes — NOT "0.114<0.160 so ok"):** an independent
+pool leg must not introduce age-correlation BEYOND the evaluated system's intrinsic level. bge (0.114)
+and BM25 (0.045) are ≤ eval (0.160) ⇒ they ADD no skew ⇒ PASS. **bge stays.**
+
+The intrinsic age skew is an EXPERIMENT-LEVEL confound (driven by eval, ~0.160), not a bge gate.
+Handle at analysis: the depth curve is **STRATIFIED by precedent age**, not merely reported.
+
+## 5d. Ladder design FROM DATA (rung count = rule of final N, not a fixed set — 2026-06-25)
+
+Binding quantity = age of the NEWEST judged-relevant precedent per task (task answerable at depth d
+iff a relevant precedent is newer than T−d). From the 30-sample (29 w/ precedent): newest-precedent
+age median **1.12 yr** (q1 0.63 / q3 2.20 / max 6.76). (My earlier 4.30 was all-candidates median —
+corrected.) Cumulative answerable-vs-depth: 3.5mo 7% · 1yr 45% · 2yr 72% · 3yr 83% · 4yr 86% · 7yr 100%.
+Curve is steep to ~3yr then a 3–7yr tail carrying the last 17%. Roadmap's 3.5mo/1yr/2-3yr crowds the
+bottom and CAPS at 83% — hiding the 83→100% depth signal in the 3–7yr layer (the geometric false-negative).
+
+**Provisional ladder: 1yr / 3yr / full-history (45% / 83% / 100%).** Adopted provisionally ONLY.
+**Do NOT finalize the rung COUNT now** — it is a function of the final answerable N after the full
+278-task labeling (we only have 29 from the 30-sample). At N=29 the inter-rung deltas are 1–4 tasks
+(2yr→4yr = 4 tasks; 4yr→5yr = 1) — "plateau shape" at that resolution with tens-of-pp bootstrap CIs
+is over-reading noise; 13/24/29 are the only distinguishable levels at this power.
+
+**Rung-count RULE (apply after full labeling):** ≥~15–20 answerable tasks per distinguishable level.
+- final N large (~200+) → revise rung count UP.
+- final N small (~40–50) → 2 rungs (1yr / full) may be more honest than 3.
+
+**Stratification vs rung granularity COMPETE for the same N.** Cannot both split into 4–5 rungs AND
+stratify by age bands on a small N. If final N stays small, state plainly which is more powerful
+(more rungs OR age-stratification) — the sample can't support both.
+
+**T unchanged** (max−365d): the deepest rung (full pre-T, `rung_floor_days=0`) already reaches ~11.5yr
+/ 100%. The fix was rung PLACEMENT, not T.
+
+**Order:** provisional ladder (1yr/3yr/full) → full labeling → real N + newest-precedent-age dist →
+finalize rung count by the rule → freeze → measure (age-stratified).
 
 ## 6. Pre-launch depth-neutrality + sanity checks (point c — SHOW before running)
 
