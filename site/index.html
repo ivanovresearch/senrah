@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vladimir Ivanov — retrieval infrastructure for AI coding agents</title>
+<meta name="description" content="Vladimir Ivanov — independent software engineer and researcher. Builds and rigorously evaluates retrieval infrastructure for AI coding agents. Author of Senrah: precedent retrieval over merged-PR history, served over MCP.">
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --fg: #1a1c1e;
+    --muted: #5b6168;
+    --accent: #1f5fbf;
+    --accent-fg: #1f5fbf;
+    --border: #e3e5e8;
+    --surface: #f4f5f6;
+    --code-bg: #eef0f2;
+    --good: #1a7a3c;
+    --warn: #9a6700;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --fg: #e6e8ea;
+      --muted: #9aa2ab;
+      --accent: #6ea8ff;
+      --accent-fg: #8bbaff;
+      --border: #2a2e34;
+      --surface: #1c1f24;
+      --code-bg: #22262c;
+      --good: #4cc06f;
+      --warn: #d9a83e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.65;
+    font-size: 1.0625rem;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .sans {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 4rem;
+  }
+  a { color: var(--accent-fg); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+  h1, h2, h3 {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  h1 { font-size: 2rem; margin: 0 0 0.5rem; font-weight: 700; }
+  h2 {
+    font-size: 1.35rem;
+    margin: 3rem 0 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+    font-weight: 650;
+  }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 0.5rem; font-weight: 650; }
+  p { margin: 0.9rem 0; }
+  ul { padding-left: 1.3rem; margin: 0.9rem 0; }
+  li { margin: 0.4rem 0; }
+  header.hero { padding: 4.5rem 0 1rem; }
+  .role {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 1.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .lede { font-size: 1.2rem; line-height: 1.55; margin: 0; }
+  .hero-links {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.92rem;
+  }
+  .hero-links a {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    color: var(--fg);
+    background: var(--surface);
+  }
+  .hero-links a.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hero-links a.primary { color: #0d1117; }
+  }
+  .hero-links a:hover { text-decoration: none; filter: brightness(1.06); }
+  .tag {
+    display: inline-block;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+  .pipeline {
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    margin: 1.2rem 0;
+  }
+  .pipeline b { color: var(--accent-fg); font-weight: 600; }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 0.75rem;
+    margin: 1.4rem 0 0.6rem;
+  }
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .metric .value { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+  .metric .label { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+  .fineprint {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-top: 0.5rem;
+  }
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.1rem;
+    margin: 1.4rem 0;
+  }
+  .callout p { margin: 0.4rem 0; }
+  blockquote {
+    margin: 1.6rem 0;
+    padding: 0 0 0 1.1rem;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+    font-style: italic;
+    font-size: 1.05rem;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.2rem 0;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.92rem;
+  }
+  .table-wrap { overflow-x: auto; }
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td:last-child, th:last-child { white-space: normal; }
+  th { font-weight: 650; color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .verdict-fail { color: var(--warn); font-weight: 600; }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 2.4rem;
+    margin: 1.1rem 0;
+  }
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.15rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .steps b { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 650; }
+  .limits {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+    background: var(--surface);
+  }
+  .limits h3 { margin-top: 0; }
+  .limits ul { margin-bottom: 0.2rem; }
+  footer {
+    border-top: 1px solid var(--border);
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    justify-content: space-between;
+  }
+  footer nav { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+  @media (max-width: 480px) {
+    header.hero { padding-top: 3rem; }
+    h1 { font-size: 1.65rem; }
+    .lede { font-size: 1.08rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <header class="hero">
+    <h1>Vladimir Ivanov</h1>
+    <p class="role">Independent software engineer &amp; researcher</p>
+    <p class="lede">I build and rigorously evaluate retrieval infrastructure for AI&nbsp;coding agents — and I treat the evaluation as a deliverable, not an afterthought.</p>
+    <div class="hero-links">
+      <a class="primary" href="https://github.com/ivanovresearch/senrah">Senrah on GitHub</a>
+      <a href="https://github.com/ivanovresearch/senrah/blob/main/docs/EVAL.md">Read the evaluation</a>
+      <a href="https://github.com/ivanovresearch">Contact via GitHub</a>
+    </div>
+  </header>
+
+  <section id="senrah">
+    <h2>Senrah <span class="tag">flagship project</span></h2>
+
+    <p><strong>Precedent retrieval for AI coding agents.</strong> Senrah is an
+    open-source, self-hosted tool that indexes a repository&rsquo;s merged-PR
+    history — each problem together with the diff that actually solved it — and
+    serves it to any coding agent (Claude&nbsp;Code, Codex, Cursor) over the
+    Model Context Protocol.</p>
+
+    <p><strong>The problem.</strong> Coding agents have zero context about how
+    <em>your</em> codebase has historically been changed. In a mature or legacy
+    repository, the conventions, workarounds, and edge-case lore live in years
+    of merged pull requests — exactly the knowledge base models were never
+    trained on. So agents guess. Every mainstream context tool embeds what your
+    code <em>is</em>; Senrah embeds how your team has actually <em>changed</em>
+    it, and hands the agent real precedents instead of plausible inventions.</p>
+
+    <p><strong>How it works.</strong></p>
+    <div class="pipeline" aria-label="Pipeline: ingest, embed, store, serve">
+      <b>ingest</b> merged PRs (resumable, rate-limit-aware) &nbsp;→&nbsp;
+      <b>embed</b> problem + solution &nbsp;→&nbsp;
+      <b>pgvector</b> (HNSW, your own Postgres) &nbsp;→&nbsp;
+      <b>MCP</b> <code>search_prs_v1</code>
+    </div>
+    <p>The agent asks a question in natural language; Senrah returns the most
+    relevant merged PRs — problem, diff, and a qualitative confidence label —
+    ranked by a weighted problem/solution similarity with ANN oversampling and
+    Python-side re-ranking. Read-only, stateless over the database, never
+    touches your source at read time.</p>
+
+    <h3>Measured, not demoed</h3>
+    <div class="metrics">
+      <div class="metric"><div class="value num">0.90</div><div class="label">recall@5</div></div>
+      <div class="metric"><div class="value num">0.79</div><div class="label">MRR@10</div></div>
+      <div class="metric"><div class="value num">0.71</div><div class="label">recall@1</div></div>
+      <div class="metric"><div class="value num">218</div><div class="label">held-out queries</div></div>
+    </div>
+    <p class="fineprint">Known-item retrieval on a deduped
+    <code>dotnet/efcore</code> corpus (575 merged PRs; backport clusters scored
+    per-cluster so cherry-picks can&rsquo;t inflate recall). Manifest
+    hash-pinned; the run is deterministic and frozen.</p>
+
+    <div class="callout">
+      <p><strong>The honest framing:</strong> these numbers measure
+      <em>ranking quality</em> — when a relevant target exists, it ranks near
+      the top. They do not measure <em>forward coverage</em>: whether a new
+      task can find a precedent that genuinely predates it, with no leakage
+      from the future. A leak-free temporal-holdout instrument for that harder
+      question is built and human-calibrated; the full-power number is still
+      open and is tracked, not hidden. Details below.</p>
+    </div>
+  </section>
+
+  <section id="evaluation">
+    <h2>Evaluation as a first-class artifact</h2>
+
+    <blockquote>&ldquo;Retrieval is easy to demo and hard to measure. Most of
+    the engineering effort here went into the measurement, not the
+    retrieval.&rdquo;</blockquote>
+
+    <p>The interesting part of Senrah is not the 0.90 — it is what happened
+    when I refused to stop there. The full account is in
+    <a href="https://github.com/ivanovresearch/senrah/blob/main/docs/EVAL.md">docs/EVAL.md</a>,
+    including the negative results. The arc:</p>
+
+    <ol class="steps">
+      <li><b>Refused to ship the flattering number alone.</b> Known-item recall
+      answers &ldquo;can it rank a target it is told exists.&rdquo; It says
+      nothing about coverage for genuinely new work — and on a deeper corpus it
+      can even <em>fall</em> as near-duplicate distractors multiply. A second
+      instrument was required.</li>
+
+      <li><b>Built a leak-free temporal holdout.</b> Corpus strictly merged
+      before a cutoff&nbsp;T, queries strictly after; the split frozen on
+      <code>merged_at</code> and original ingest timestamps (PR bodies are
+      editable after the fact, so current state can&rsquo;t be trusted);
+      relevance labels frozen together with the corpus boundary; the scorer
+      applies the product&rsquo;s own below-threshold cutoff so the eval
+      measures what users actually get. The full efcore history was ingested
+      for it: 487&nbsp;→&nbsp;8,449 PRs.</li>
+
+      <li><b>Hit a statistical-power failure — and recorded it.</b> With
+      relevance defined by metadata links, only <span class="num">5</span> of
+      278 post-T tasks were answerable, against a pre-registered floor of
+      ≥&nbsp;80. Five is noise, not a measurement. But n=5 has two opposite
+      explanations — the label is too strict, or precedents are genuinely
+      rare — and pivoting back to the good-looking number would have hidden the
+      distinction.</li>
+
+      <li><b>Diagnosed it with a labeled A/B probe.</b> Hand-checking 30 random
+      post-T tasks showed a genuine prior precedent existed for ≥&nbsp;14/30
+      (strict) up to ~29/30 (lenient): the metadata label was undercounting
+      true relevance by roughly 14–29×. Verdict: the instrument was rescuable;
+      the label was the disease.</li>
+
+      <li><b>Rebuilt relevance with TREC-style pooling.</b> Per-task judgment
+      pools union three independent retrieval legs — the production embedding
+      retriever, BM25-unique, and a second-family embedder (bge-m3). A blind
+      human gold set of 270 (task, candidate) pairs was labeled
+      <em>before</em> looking at any result: 29 of 30 tasks answerable under
+      judged relevance. Per-leg precision (embedding retriever 0.51, bge-m3
+      0.12, BM25 0.09) validated the pool — the low-precision legs still
+      contribute 29% of relevant precedents the main leg missed.</li>
+
+      <li><b>The LLM judge failed its pre-registered gate — and stayed
+      failed.</b> The plan to scale labeling with an LLM judge was conditional
+      on Cohen&rsquo;s κ ≥ 0.6 against human labels. Best result:
+      <span class="verdict-fail">κ = 0.39 — below the floor</span>
+      (precision 0.77, recall 0.35; the misses concentrated exactly on the
+      semantic and convention-transfer cases the pool was widened to capture).
+      The judge is kept advisory-only and can never override the recall
+      guardrail. A slower, human-anchored result beats a number laundered
+      through a labeler measured to be unreliable.</li>
+    </ol>
+
+    <div class="table-wrap">
+    <table aria-label="LLM judge calibration results">
+      <thead><tr><th>Judge (framing)</th><th class="num">κ vs human</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Sonnet 4.6 (Phase-9 gold)</td><td class="num">0.27</td><td class="verdict-fail">below floor</td></tr>
+        <tr><td>Opus 4.8 (Phase-9 gold)</td><td class="num">0.39</td><td class="verdict-fail">below floor</td></tr>
+        <tr><td>Sonnet 4.6 (temporal gold)</td><td class="num">0.39</td><td class="verdict-fail">below floor</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>Principles held throughout: pre-register the gate before the results
+    exist; label blind before you look; treat the first number as a symptom,
+    not a finding; and report negative results as results — because a
+    measurement you cannot trust is worse than no measurement.</p>
+  </section>
+
+  <section id="organizations">
+    <h2>For engineering organizations</h2>
+
+    <p>Senrah is built for the environment where agent guessing hurts most:
+    large codebases with years of accumulated, company-specific convention.
+    Base models degrade exactly where your history is deepest — but the
+    precedents <em>are</em> the conventions, and retrieval over them is
+    model-agnostic.</p>
+
+    <ul>
+      <li><strong>Self-hosted, your data stays yours.</strong> Bring your own
+      Postgres + pgvector; nothing is sent to a third-party index. The MCP
+      server is read-only, stateless over the database, and never touches your
+      source at read time.</li>
+      <li><strong>Minimal blast radius.</strong> Secrets come only from
+      environment variables — never from config files, which are scanned for
+      secret-shaped keys at startup. Fine-grained GitHub tokens with read-only
+      PR/issue scopes are documented and sufficient. Fail-closed secret
+      scanning in both the pre-commit hook and CI.</li>
+      <li><strong>A versioned agent contract.</strong> The MCP tool is
+      <code>search_prs_v1</code> with a published output schema — format
+      changes cannot silently break dependent agents or prompts.</li>
+      <li><strong>Built for more than GitHub.</strong> The connector interface
+      is a strict extensibility seam: adding GitLab, Bitbucket, or internal Git
+      hosting requires zero changes to the indexer or the MCP server (an
+      import-boundary test enforces it).</li>
+      <li><strong>Operationally serious.</strong> Resumable ingest with a
+      proven no-data-loss model (live-validated on an interrupted run:
+      0 PRs lost, result identical to an uninterrupted reference), proactive
+      rate-limit handling, alembic migrations, health/status introspection,
+      and a 400+-test suite running against a real pgvector container in CI —
+      no live credentials required.</li>
+    </ul>
+
+    <div class="limits">
+      <h3>Current limitations, stated plainly</h3>
+      <ul>
+        <li>Validated on a single corpus (<code>dotnet/efcore</code>); the
+        connector seam exists but only a GitHub connector ships today.</li>
+        <li>The full-power forward-coverage number is still open — the harness
+        is built and leak-checked, but scaling the labeling is human-bound
+        because the LLM judge failed calibration.</li>
+        <li>Embeddings default to OpenAI; the endpoint is pluggable via
+        <code>embed.base_url</code> to any OpenAI-compatible provider,
+        including a local one — but fully air-gapped deployment has not been
+        exercised end-to-end.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="contact">
+    <h2>Links &amp; contact</h2>
+    <ul>
+      <li><a href="https://github.com/ivanovresearch/senrah">github.com/ivanovresearch/senrah</a> — source, MIT-licensed</li>
+      <li><a href="https://github.com/ivanovresearch/senrah/blob/main/docs/EVAL.md">docs/EVAL.md</a> — the full evaluation, including the negative results</li>
+      <li><a href="https://github.com/ivanovresearch">github.com/ivanovresearch</a> — reach me here</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>© 2026 Vladimir Ivanov · ivanovresearch.dev</span>
+    <nav>
+      <a href="#senrah">Senrah</a>
+      <a href="#evaluation">Evaluation</a>
+      <a href="https://github.com/ivanovresearch">GitHub</a>
+    </nav>
+  </footer>
+
+</main>
+</body>
+</html>
