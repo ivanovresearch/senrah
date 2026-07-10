@@ -403,6 +403,27 @@
     precedents <em>are</em> the conventions, and retrieval over them is
     model-agnostic.</p>
 
+    <h3>Cross-service planning from one index</h3>
+    <p>Senrah indexes any number of repositories into one database, and the
+    search tool takes an optional per-repo filter — so one central, read-only
+    index serves every team&rsquo;s agents. For tasks that span services, that
+    enables a two-step pattern:</p>
+    <div class="pipeline" aria-label="Cross-service pattern: plan org-wide, execute per repo">
+      <b>plan</b> query all repos &nbsp;→&nbsp; repo spread of hits = impact hint
+      &nbsp;→&nbsp; <b>decompose</b> &nbsp;→&nbsp; <b>execute</b> per-repo queries
+    </div>
+    <p>A planning agent queries the whole index — «add order cancellation
+    flow» — and the repository spread of the results shows how the last
+    similar change actually landed: an endpoint PR in <code>gateway</code>, a
+    domain method + migration in <code>orders</code>, an event consumer in
+    <code>notifications</code>. That is a decomposition drawn from your own
+    history, before any code is written. Each sub-task then goes to an agent
+    querying its own repository for house-style precedents. No cross-team
+    ticket conventions required — the signal is semantic similarity of
+    problems, not issue-tracker links. (And stated plainly: a brand-new
+    service with no merged history will not appear; this complements a
+    dependency graph rather than replacing it.)</p>
+
     <ul>
       <li><strong>Self-hosted, your data stays yours.</strong> Bring your own
       Postgres + pgvector; nothing is sent to a third-party index. The MCP

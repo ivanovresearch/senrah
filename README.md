@@ -247,6 +247,43 @@ human-labeling-bound. The full account, including the negative results, is in
   real-pgvector integration + gitleaks); tag-triggered release with OIDC
   Trusted Publishing — no stored PyPI token anywhere.
 
+## Cross-service planning: one index, many repos
+
+Senrah indexes any number of repositories into one database (`repositories:`
+is a list in `senrah.yaml`), and `search_prs_v1` takes an optional `repos`
+filter. Because the MCP server is stateless and read-only over the database,
+one central index can serve every team's agents: ingest runs as a background
+job owned by a platform team, and each agent connects to the same server.
+
+That enables a two-step pattern for tasks that span services (the common
+enterprise case: a gateway, the services behind it, and their consumers):
+
+1. **Plan org-wide.** Query *without* a `repos` filter. The repository spread
+   of the top results is an impact hint drawn from your own history: a similar
+   past task was solved by PRs in `gateway` (new endpoint), `orders` (domain
+   method + migration), and `notifications` (event consumer). That is a
+   ready-made decomposition for grooming — before any code is written.
+2. **Execute per repo.** Hand each sub-task to an agent working in its
+   repository, which queries with a `repos` filter for house-style precedents
+   in that codebase.
+
+```jsonc
+// Planning agent — search every indexed repo:
+{ "query": "add order cancellation flow", "limit": 10 }
+// → results span org/gateway, org/orders, org/notifications:
+//   the shape of the last similar change, per repository.
+
+// Executing agent, working inside org/orders:
+{ "query": "add order state transition with migration",
+  "repos": ["org/orders"] }
+```
+
+Stated plainly: the impact hint is only as strong as the indexed history — a
+brand-new service with no merged PRs will not appear, and this complements a
+dependency graph rather than replacing it. No cross-team ticket conventions
+are required: the signal is semantic similarity of problems, not issue-tracker
+links.
+
 ## Where senrah fits
 
 Honest positioning, not a feature matrix:
