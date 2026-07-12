@@ -2,6 +2,8 @@
 eval/temporal/bootstrap_ci.py -- Percentile bootstrap CI for hit-rate metrics.
 
 Pure function module; no I/O, no DB, no network. Safe to import at any time.
+numpy is imported lazily inside the function (same pattern as anthropic in
+eval/judge/judge.py) so the module stays importable without senrah[eval].
 
 Algorithm:
   - Resample unit: per-query Bernoulli trial (each element of `hits` is 0 or 1).
@@ -18,8 +20,6 @@ Usage:
 """
 
 from __future__ import annotations
-
-import numpy as np
 
 
 def bootstrap_hit_rate_ci(
@@ -43,6 +43,8 @@ def bootstrap_hit_rate_ci(
           lo    -- lower percentile CI bound.
           hi    -- upper percentile CI bound.
     """
+    import numpy as np  # lazy: numpy lives in the [eval] extra, not dev/runtime
+
     rng = np.random.default_rng(seed)
     arr = np.array(hits, dtype=float)
     n = len(arr)

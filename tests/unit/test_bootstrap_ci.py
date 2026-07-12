@@ -8,7 +8,11 @@ boundary values (all-hits / all-misses).
 
 from __future__ import annotations
 
-from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci
+import pytest
+
+pytest.importorskip("numpy")  # numpy lives in the [eval] extra, not dev/runtime
+
+from eval.temporal.bootstrap_ci import bootstrap_hit_rate_ci  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

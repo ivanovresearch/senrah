@@ -55,6 +55,7 @@ dev = [
 # published at PyPI by Anthropic PBC (T-09-SC).
 eval = [
     "anthropic>=0.111.0,<1",
+    "numpy>=2,<3",
 ]
 
 [project.scripts]
