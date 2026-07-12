@@ -15,7 +15,9 @@ classifiers = [
 ]
 dependencies = [
     "psycopg[binary,pool]>=3.3.4,<4",
-    "pgvector>=0.4.2,<1",
+    # <0.5: pgvector 0.5.0 changed the psycopg decode to Vector objects
+# (no __len__); upgrade deliberately, not via CI dependency drift.
+"pgvector>=0.4.2,<0.5",
     "alembic>=1.18.4,<2",
     "openai>=2.38.0,<3",
     "tiktoken>=0.13.0,<1",
