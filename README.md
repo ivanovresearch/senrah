@@ -22,7 +22,7 @@ Senrah is read-only retrieval over your own version-control history: ingest
 merged PRs, embed problem + solution, expose a `search_prs_v1` MCP tool. It
 never writes to your repos and never touches the source at read time.
 
-**Project status:** v1.1.0 — GitHub-only MVP, validated end-to-end on a
+**Project status:** v1.1.1 — GitHub-only MVP, validated end-to-end on a
 single corpus (`dotnet/efcore`). See [Roadmap](#roadmap) for what is deliberately not
 done yet.
 

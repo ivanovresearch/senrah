@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "senrah"
-version = "1.1.0"
+version = "1.1.1"
 description = "Semantic PR search for AI coding agents — ingest, index, and retrieve merged-PR precedents via MCP"
 readme = "README.md"
 requires-python = ">=3.12"

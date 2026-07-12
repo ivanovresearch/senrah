@@ -52,3 +52,20 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    # Production index; runs only after the TestPyPI pre-flight succeeds.
+    # Bound to the `pypi` GitHub Environment — add required reviewers there
+    # to turn every production release into an explicit manual approval.
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (Trusted Publishing — no stored token)
+        uses: pypa/gh-action-pypi-publish@release/v1

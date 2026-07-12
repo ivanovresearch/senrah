@@ -4,6 +4,24 @@ All notable changes to senrah are documented in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] — 2026-07-11 — Production PyPI
+
+First release published to production PyPI (`pip install senrah`).
+
+### Added
+- **Production PyPI publishing**: `release.yml` gained a `publish-pypi` job
+  (OIDC Trusted Publishing, `pypi` GitHub Environment) that runs after the
+  TestPyPI pre-flight succeeds.
+- **Connector import-boundary guard** (`tests/unit/test_connector_isolation.py`):
+  connectors must not import the indexer, ingester, db, mcp, or cli layers.
+
+### Fixed
+- **CI**: `numpy` moved to the `[eval]` extra with a lazy import in
+  `eval/temporal/bootstrap_ci.py`; CI installs `.[dev,eval]` so the eval-harness
+  unit tests run instead of breaking collection.
+- **Dependencies**: pinned `pgvector>=0.4.2,<0.5` — 0.5.0 changed the psycopg
+  decode to `Vector` objects (no `__len__`), breaking embedding reads.
+
 ## [1.1.0] — 2026-06-13 — Release Readiness
 
 Engineering hardening to make senrah ready for public use. No new retrieval
@@ -46,5 +64,6 @@ coding agents over MCP.
 - **Operations**: `index --reindex`, configurable tunables via `senrah.yaml`,
   status/observability surface, and a gitleaks pre-commit secret-scan hook.
 
+[1.1.1]: https://github.com/ivanovresearch/senrah/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ivanovresearch/senrah/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ivanovresearch/senrah/releases/tag/v1.0.0
