@@ -1,0 +1,149 @@
+% Leak-Free Temporal Evaluation of Precedent Retrieval over Merged-PR History
+% Target: MSR technical track / arXiv cs.SE preprint (ACM sigconf format).
+% Build: latexmk -pdf main.tex  (or upload the paper/ directory to Overleaf).
+\documentclass[sigconf,review,anonymous=false]{acmart}
+
+\usepackage{booktabs}
+
+\begin{document}
+
+\title{Leak-Free Temporal Evaluation of Precedent Retrieval over
+  Merged Pull-Request History}
+
+\author{Vladimir Ivanov}
+\affiliation{%
+  \institution{Independent Researcher}
+  \country{}}
+\email{via ivanovresearch.dev}
+
+\begin{abstract}
+Retrieval tools for AI coding agents are trivial to demo and hard to
+measure. We study the evaluation of \emph{precedent retrieval} --- ranked
+semantic search over a repository's merged pull-request history, where each
+item is a problem--solution pair --- and show that the standard known-item
+protocol, while necessary, systematically overstates practical utility. On a
+backport-deduplicated corpus of 575 merged PRs from \texttt{dotnet/efcore},
+known-item retrieval achieves recall@5 = 0.90 (MRR@10 = 0.79, 218 held-out
+queries), yet this measures only ranking quality. We construct a leak-free
+temporal-holdout instrument for the harder question --- forward coverage:
+whether a genuinely new task retrieves a relevant precedent that strictly
+predates it. A metadata-linked relevance label left the instrument
+underpowered (5 answerable tasks against a pre-registered floor of 80); a
+30-task labeled probe attributed the failure to the label, not the corpus,
+undercounting true relevance by 14--29$\times$. We rebuild relevance with
+TREC-style pooling over three retrieval legs and a blind human gold set of
+270 pairs (24\% positive; 29/30 tasks answerable). An LLM judge intended to
+scale the labeling failed its pre-registered calibration gate (Cohen's
+$\kappa$ = 0.39 vs.\ a 0.6 floor; recall 0.35 against human labels,
+concentrated exactly on the semantic-transfer cases the pool exists to
+capture) and was retained as advisory-only. We report this negative result
+as a first-class finding and derive design guidance for evaluating
+history-grounded retrieval without laundering coverage numbers through
+uncalibrated judges.
+\end{abstract}
+
+\keywords{mining software repositories, retrieval evaluation, AI coding
+agents, temporal holdout, TREC pooling, LLM-as-judge calibration}
+
+\maketitle
+
+% ---------------------------------------------------------------------------
+\section{Introduction}
+% TODO(v0.2): motivation — agents guess in legacy codebases; precedent
+% retrieval serves problem→diff pairs from the repo's own history over MCP.
+% Contributions (drafted):
+%  C1. A leak-free temporal-holdout design for PR-history retrieval, with
+%      explicit leakage checks (split frozen on merged_at + original ingest
+%      timestamps; labels frozen with the corpus boundary; product's own
+%      score threshold applied by the scorer).
+%  C2. Evidence that metadata-linked relevance labels underpower temporal
+%      instruments (n=5 vs pre-registered ≥80), diagnosed via a labeled A/B
+%      probe (14–29× undercount) rather than a silent pivot to known-item.
+%  C3. A TREC-pooled, human-calibrated relevance definition for PR-history
+%      retrieval; per-leg precision validates the union pool (embedding 0.51,
+%      bge-m3 0.12, BM25 0.09; unique legs contribute 29% of relevant items).
+%  C4. A negative result: two frontier LLM judges fail a pre-registered
+%      calibration gate (κ ≤ 0.39 < 0.6) with misses concentrated on
+%      convention-transfer cases; we argue for advisory-only judges gated on
+%      κ, and report what that costs (human-labeling-bound scaling).
+% Source material: docs/EVAL.md in the senrah repository (hash-pinned
+% manifests; deterministic runs).
+
+\section{Background and Related Work}
+% TODO(v0.2):
+% - Known-item / TREC "find the target" evaluation; why it measures ranking
+%   quality, not coverage.
+% - Temporal splits in MSR & IR; leakage failure modes (post-hoc edited PR
+%   bodies, re-ingest boundary drift).
+% - TREC pooling: union-of-systems judgment pools; pool bias.
+% - LLM-as-judge calibration literature; Cohen's κ gates.
+% - Context tools for coding agents (current-code embedding) vs
+%   history-grounded retrieval (problem→diff precedents).
+
+\section{System Under Evaluation}
+% TODO(v0.2): senrah in one page — ingest (resumable, bot/giant-PR
+% filtering), dual embeddings (problem 0.7 / solution 0.3 in the frozen eval
+% protocol), pgvector HNSW, versioned MCP read path with the below-threshold
+% envelope. Reference implementation is open source.
+
+\section{Instrument 1: Known-Item Retrieval}
+% TODO(v0.2): protocol, backport dedup (union-find over corroborated edges;
+% per-cluster scoring), frozen numbers:
+\begin{table}[h]
+  \caption{Known-item retrieval on deduplicated \texttt{dotnet/efcore}
+  (575 merged PRs, 218 held-out queries).}
+  \label{tab:knownitem}
+  \begin{tabular}{lr}
+    \toprule
+    Metric & Value \\
+    \midrule
+    recall@1 & 0.71 \\
+    recall@5 & 0.90 \\
+    recall@10 & 0.93 \\
+    MRR@10 & 0.79 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+% TODO(v0.2): why per-cluster scoring matters (cherry-picks inflate recall);
+% why deeper corpora can lower known-item recall (distractor density).
+
+\section{Instrument 2: Leak-Free Temporal Holdout}
+% TODO(v0.2): design + leakage checks; the full-history ingest
+% (487 → 8,449 PRs); deep cluster map (9,594 PRs, 397 multi-member clusters,
+% hash-pinned).
+
+\section{The Power Failure and Its Diagnosis}
+% TODO(v0.2): metadata-linked label → 5/278 answerable vs pre-registered
+% ≥80 floor; two competing explanations (label too strict vs precedents
+% genuinely rare); 30-task labeled A/B probe → ≥14/30 strict, ~29/30 lenient;
+% verdict: label undercounts 14–29×; instrument rescuable.
+
+\section{Rebuilding Relevance: TREC Pooling and Human Calibration}
+% TODO(v0.2): three-leg union pool (production embedding retriever,
+% BM25-unique, bge-m3-unique); blind gold set of 270 (task, candidate) pairs
+% labeled before any depth result; 65/205 positive (24%); 29/30 answerable;
+% per-leg precision 0.51 / 0.12 / 0.09; unique legs contribute 19/65 (29%)
+% of relevant precedents.
+
+\section{A Negative Result: The LLM Judge Fails Its Gate}
+% TODO(v0.2): pre-registered authority gate κ ≥ 0.6; results:
+% Sonnet 4.6 (phase-9 gold) 0.27; Opus 4.8 (phase-9 gold) 0.39;
+% Sonnet 4.6 (temporal gold) 0.39. Confusion matrix TP=23 FN=42 FP=7 TN=198
+% → precision 0.77, recall 0.35; misses concentrated on 10/11 bge-unique and
+% 6/8 bm25-unique relevant precedents. Decision: advisory-only; scaling
+% remains human-labeling-bound.
+
+\section{Discussion}
+% TODO(v0.2): design guidance — pre-register gates; blind-label before
+% looking; first number is a symptom; negative results are results.
+% Threats to validity: single corpus (efcore); single embedding family in
+% the production leg; judge prompts not exhaustively engineered (framing
+% variation shown); English-language corpus.
+
+\section{Conclusion}
+% TODO(v0.2)
+
+% \bibliographystyle{ACM-Reference-Format}
+% \bibliography{references}
+
+\end{document}
