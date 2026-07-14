@@ -1,7 +1,8 @@
 % Leak-Free Temporal Evaluation of Precedent Retrieval over Merged-PR History
-% Target: MSR technical track / arXiv cs.SE preprint (ACM sigconf format).
+% Target: arXiv cs.SE preprint (cross-list cs.IR), later MSR technical track.
 % Build: latexmk -pdf main.tex  (or upload the paper/ directory to Overleaf).
-\documentclass[sigconf,review,anonymous=false]{acmart}
+% v0.2 — full draft. Every number traces to docs/EVAL.md (hash-pinned manifests).
+\documentclass[sigconf,nonacm]{acmart}
 
 \usepackage{booktabs}
 
@@ -34,7 +35,7 @@ undercounting true relevance by 14--29$\times$. We rebuild relevance with
 TREC-style pooling over three retrieval legs and a blind human gold set of
 270 pairs (24\% positive; 29/30 tasks answerable). An LLM judge intended to
 scale the labeling failed its pre-registered calibration gate (Cohen's
-$\kappa$ = 0.39 vs.\ a 0.6 floor; recall 0.35 against human labels,
+$\kappa = 0.39$ vs.\ a 0.6 floor; recall 0.35 against human labels,
 concentrated exactly on the semantic-transfer cases the pool exists to
 capture) and was retained as advisory-only. We report this negative result
 as a first-class finding and derive design guidance for evaluating
@@ -49,49 +50,181 @@ agents, temporal holdout, TREC pooling, LLM-as-judge calibration}
 
 % ---------------------------------------------------------------------------
 \section{Introduction}
-% TODO(v0.2): motivation — agents guess in legacy codebases; precedent
-% retrieval serves problem→diff pairs from the repo's own history over MCP.
-% Contributions (drafted):
-%  C1. A leak-free temporal-holdout design for PR-history retrieval, with
-%      explicit leakage checks (split frozen on merged_at + original ingest
-%      timestamps; labels frozen with the corpus boundary; product's own
-%      score threshold applied by the scorer).
-%  C2. Evidence that metadata-linked relevance labels underpower temporal
-%      instruments (n=5 vs pre-registered ≥80), diagnosed via a labeled A/B
-%      probe (14–29× undercount) rather than a silent pivot to known-item.
-%  C3. A TREC-pooled, human-calibrated relevance definition for PR-history
-%      retrieval; per-leg precision validates the union pool (embedding 0.51,
-%      bge-m3 0.12, BM25 0.09; unique legs contribute 29% of relevant items).
-%  C4. A negative result: two frontier LLM judges fail a pre-registered
-%      calibration gate (κ ≤ 0.39 < 0.6) with misses concentrated on
-%      convention-transfer cases; we argue for advisory-only judges gated on
-%      κ, and report what that costs (human-labeling-bound scaling).
-% Source material: docs/EVAL.md in the senrah repository (hash-pinned
-% manifests; deterministic runs).
+\label{sec:intro}
 
+AI coding agents increasingly operate inside mature codebases whose
+conventions, workarounds, and edge-case lore live not in the current source
+but in years of merged pull requests. \emph{Precedent retrieval} makes that
+history available at write time: each merged PR is indexed as a
+problem--solution pair (the issue or description that states what was wrong,
+and the diff the team actually accepted), and an agent working on a new task
+retrieves the most similar prior precedents. The reference implementation
+studied here, \textsc{senrah}, is an open-source, self-hosted retrieval
+server that embeds problem and solution texts separately and serves ranked
+results to any agent over the Model Context Protocol~\cite{mcp2024}.
+
+This paper is not about the retriever. It is about the measurement --- which
+we found to be, by a wide margin, the harder engineering problem. A
+retrieval tool is easy to make \emph{look} good: pick a few queries where it
+returns something plausible, screenshot the result, ship. The failure mode
+of that approach is that one never learns whether the tool works; one learns
+whether one can cherry-pick. We therefore ask two distinct questions:
+
+\begin{enumerate}
+  \item \textbf{Ranking quality.} When a relevant target is known to exist,
+    does it rank near the top? This is the classical known-item
+    setup~\cite{sparck1975ideal,voorhees2000variations}.
+  \item \textbf{Forward coverage.} For a \emph{new} task, does a
+    genuinely-relevant precedent that strictly predates it exist in the
+    history, and does the system retrieve it --- with no leakage from the
+    future? This is the question that decides whether precedent retrieval
+    is actually useful, and it is the one that is easy to get subtly,
+    invalidatingly wrong.
+\end{enumerate}
+
+Answering the second question forced a sequence of methodological decisions
+that we believe generalize beyond our system, and one measured failure that
+we believe the community should see reported rather than buried. Our
+contributions:
+
+\begin{itemize}
+  \item[\textbf{C1.}] A \textbf{leak-free temporal-holdout design} for
+    retrieval over PR history, with leakage controls that are checked
+    rather than assumed: the corpus/query split freezes on merge timestamps
+    and original ingest state (PR bodies are editable after the fact),
+    relevance labels freeze together with the corpus boundary, and the
+    scorer applies the product's own score threshold so the instrument
+    measures what a user actually gets.
+  \item[\textbf{C2.}] Evidence that \textbf{metadata-linked relevance labels
+    underpower temporal instruments}: under an issue-link label, only 5 of
+    278 post-cutoff tasks were answerable against a pre-registered floor of
+    80. A 30-task labeled probe attributed the failure to the label (a
+    14--29$\times$ undercount of true relevance), not to genuine precedent
+    scarcity --- a distinction that a silent pivot back to known-item
+    metrics would have hidden.
+  \item[\textbf{C3.}] A \textbf{TREC-pooled, human-calibrated relevance
+    definition} for PR-history retrieval. A blind gold set of 270
+    (task, candidate) pairs, labeled before any system result was
+    inspected, validates the three-leg union pool: the production embedding
+    leg is precise (0.51), and the low-precision lexical and second-family
+    embedding legs still contribute 29\% of all relevant precedents ---
+    the classical pooling trade~\cite{zobel1998reliable}.
+  \item[\textbf{C4.}] A \textbf{negative result on LLM-as-judge}: two
+    frontier models fail a pre-registered calibration gate
+    ($\kappa \le 0.39 < 0.6$)~\cite{cohen1960}, with misses concentrated
+    precisely on the semantic and convention-transfer cases the pool was
+    widened to capture. We keep the judge advisory-only and accept that
+    scaling the instrument remains human-labeling-bound.
+\end{itemize}
+
+Throughout, we held four principles: pre-register the gate before the
+results exist; label blind before you look; treat the first number as a
+symptom, not a finding; and report negative results as results, because a
+measurement you cannot trust is worse than no measurement.
+
+% ---------------------------------------------------------------------------
 \section{Background and Related Work}
-% TODO(v0.2):
-% - Known-item / TREC "find the target" evaluation; why it measures ranking
-%   quality, not coverage.
-% - Temporal splits in MSR & IR; leakage failure modes (post-hoc edited PR
-%   bodies, re-ingest boundary drift).
-% - TREC pooling: union-of-systems judgment pools; pool bias.
-% - LLM-as-judge calibration literature; Cohen's κ gates.
-% - Context tools for coding agents (current-code embedding) vs
-%   history-grounded retrieval (problem→diff precedents).
+\label{sec:related}
 
+\paragraph{Known-item evaluation.}
+Known-item retrieval --- find the one document known to answer the query ---
+is among the oldest evaluation designs in IR~\cite{sparck1975ideal}. It
+requires no relevance judging beyond the query--target link, which makes it
+cheap and reproducible, but it measures only whether a target the system is
+\emph{told} exists can be ranked highly. Voorhees's work on judgment
+variation~\cite{voorhees2000variations} and Zobel's analysis of pooling
+reliability~\cite{zobel1998reliable} establish the broader point we rely
+on: what one measures is determined by how relevance is defined, and
+narrow definitions bias conclusions.
+
+\paragraph{Temporal splits and leakage.}
+Time-respecting evaluation is standard advice in mining software
+repositories, yet leakage enters through subtle channels: retrospectively
+edited artifacts, re-ingested corpora that silently move the split
+boundary, and labels computed over post-cutoff state. Kalliamvakou et
+al.~\cite{kalliamvakou2014promises} catalogue the perils of mining GitHub
+data at face value; our design (\S\ref{sec:temporal}) treats their
+warnings as checklist items --- e.g., PR descriptions are mutable, so the
+split must freeze on merge timestamps and original ingest state, not on
+current body content. Benchmarks for repository-level agent tasks such as
+SWE-bench~\cite{jimenez2024swebench} face analogous contamination
+questions from model training data; our instrument addresses the
+retrieval-side analogue.
+
+\paragraph{Pooling.}
+Judging every (task, candidate) pair is infeasible at corpus scale. TREC
+pooling~\cite{voorhees2000variations,zobel1998reliable} unions the top
+candidates of multiple independent systems into a judgment pool; relevance
+is then judged only inside the pool. Pool composition is a known source of
+bias --- a pool built from one system family under-represents what only
+other families retrieve. Our pool (\S\ref{sec:pooling}) therefore unions an
+embedding retriever, a lexical BM25 leg~\cite{robertson2009bm25}, and a
+second-family embedder (bge-m3~\cite{chen2024bge}), and we validate each
+leg's contribution against blind human labels.
+
+\paragraph{LLM-as-judge.}
+Scaling relevance labeling with an LLM judge is attractive and increasingly
+common~\cite{zheng2023judging}. The known risk is that judge agreement with
+humans is task-dependent and must be measured, not assumed. We
+pre-registered a Cohen's $\kappa$~\cite{cohen1960} authority gate and
+report a failure against it (\S\ref{sec:judge}); the failure mode ---
+misses concentrated on convention-transfer relevance --- is, to our
+knowledge, underdocumented and directly actionable for others building
+retrieval evals over software history.
+
+\paragraph{Context for coding agents.}
+Contemporary context tools embed \emph{current} code (semantic code
+search~\cite{husain2019codesearchnet}, repository indexing in commercial
+assistants). Precedent retrieval is complementary: it embeds how the code
+has historically been \emph{changed} --- problem--diff pairs from merged
+PRs~\cite{gousios2014exploratory} --- which is precisely the knowledge that
+is absent from current source and from base-model training in private,
+legacy codebases.
+
+% ---------------------------------------------------------------------------
 \section{System Under Evaluation}
-% TODO(v0.2): senrah in one page — ingest (resumable, bot/giant-PR
-% filtering), dual embeddings (problem 0.7 / solution 0.3 in the frozen eval
-% protocol), pgvector HNSW, versioned MCP read path with the below-threshold
-% envelope. Reference implementation is open source.
+\label{sec:system}
 
+\textsc{senrah} ingests merged PRs from a repository (resumable traversal;
+bot and automation filtering; oversized-PR exclusion), stores problem text
+and diff, and embeds them separately with
+\texttt{text-embedding-3-small}~\cite{openai2024embeddings} (1536
+dimensions, token-aware truncation) into PostgreSQL with
+pgvector HNSW indexes~\cite{malkov2020hnsw} on both columns. Retrieval
+embeds the query once, oversamples by approximate nearest-neighbor search
+on both columns, and re-ranks by a weighted problem/solution cosine
+composite; results below a score threshold are withheld and surfaced as a
+below-threshold hint rather than returned as matches. In the frozen
+evaluation protocol the problem/solution weights are 0.7/0.3. The system is
+open source; all evaluation manifests are hash-pinned and runs are
+deterministic.
+
+% ---------------------------------------------------------------------------
 \section{Instrument 1: Known-Item Retrieval}
-% TODO(v0.2): protocol, backport dedup (union-find over corroborated edges;
-% per-cluster scoring), frozen numbers:
+\label{sec:knownitem}
+
+\paragraph{Definition.}
+For a known issue whose fixing PR is known, does that PR appear in the
+top-$k$ results when the issue text is used as the query?
+
+\paragraph{Corpus and protocol.}
+\texttt{dotnet/efcore}, deduplicated: 575 merged PRs (merged 2024-04-06
+through 2026-06-12), 218 held-out queries. The manifest is hash-pinned and
+the run is deterministic.
+
+\paragraph{Deduplication is load-bearing.}
+A naive corpus double-counts backports and cherry-picks: the ``same'' fix
+appears several times, so \emph{a} hit is easy and recall inflates. We
+detect backport clusters from stored diffs using union-find over
+\emph{corroborated} edges --- diff similarity alone is never allowed to
+merge two PRs --- and score \textbf{per-cluster}: a hit on any cluster
+member counts once, and distractors are likewise counted per-cluster. The
+divergence between per-PR and per-cluster scoring is demonstrated on a
+fixture where the two disagree.
+
 \begin{table}[h]
   \caption{Known-item retrieval on deduplicated \texttt{dotnet/efcore}
-  (575 merged PRs, 218 held-out queries).}
+  (575 merged PRs, 218 held-out queries, per-cluster scoring).}
   \label{tab:knownitem}
   \begin{tabular}{lr}
     \toprule
@@ -104,46 +237,241 @@ agents, temporal holdout, TREC pooling, LLM-as-judge calibration}
     \bottomrule
   \end{tabular}
 \end{table}
-% TODO(v0.2): why per-cluster scoring matters (cherry-picks inflate recall);
-% why deeper corpora can lower known-item recall (distractor density).
 
+\paragraph{Why this is not the whole story.}
+Known-item recall answers ``can the system rank a target it is told
+exists.'' It says nothing about coverage for genuinely new work. Worse, on
+a deeper corpus known-item recall can \emph{fall}, because more PRs means
+more near-duplicate distractors competing for top-$k$ slots --- so
+optimizing this number alone can penalize exactly the corpus growth that
+increases real utility. A second instrument is required.
+
+% ---------------------------------------------------------------------------
 \section{Instrument 2: Leak-Free Temporal Holdout}
-% TODO(v0.2): design + leakage checks; the full-history ingest
-% (487 → 8,449 PRs); deep cluster map (9,594 PRs, 397 multi-member clusters,
-% hash-pinned).
+\label{sec:temporal}
 
+\paragraph{Design.}
+Pick a cutoff time $T$. Everything merged strictly before $T$ is the
+retrievable corpus; everything merged strictly after $T$ is the incoming
+task stream. For each post-$T$ task: does a relevant precedent exist
+strictly before $T$, and does the system retrieve it? This simulates the
+deployed setting --- an agent working today, retrieving from history.
+
+\paragraph{Leakage controls (where temporal evals die).}
+\begin{itemize}
+  \item The corpus filter is strictly $\mathit{merged\_at} < T$; queries
+    strictly $\mathit{merged\_at} > T$. The split freezes on
+    $\mathit{merged\_at}$ and the \emph{original} ingest timestamps ---
+    never on current PR-body state, which is editable after the
+    fact~\cite{kalliamvakou2014promises}.
+  \item Relevance labels and the corpus boundary freeze together, so a
+    later re-ingest cannot silently move the boundary under the labels.
+  \item The scorer applies the product's own below-threshold cutoff, so
+    the instrument measures what a user actually receives, not an
+    idealized ranking.
+\end{itemize}
+
+\paragraph{Materialization.}
+The full multi-year history was ingested for this instrument
+(\texttt{efcore}: 487 $\rightarrow$ 8{,}449 PRs; one ingest, one index,
+every depth rung materializable from it), and a deep cluster map built
+(9{,}594 PRs, 397 multi-member backport clusters, hash-pinned).
+
+% ---------------------------------------------------------------------------
 \section{The Power Failure and Its Diagnosis}
-% TODO(v0.2): metadata-linked label → 5/278 answerable vs pre-registered
-% ≥80 floor; two competing explanations (label too strict vs precedents
-% genuinely rare); 30-task labeled A/B probe → ≥14/30 strict, ~29/30 lenient;
-% verdict: label undercounts 14–29×; instrument rescuable.
+\label{sec:power}
 
-\section{Rebuilding Relevance: TREC Pooling and Human Calibration}
-% TODO(v0.2): three-leg union pool (production embedding retriever,
-% BM25-unique, bge-m3-unique); blind gold set of 270 (task, candidate) pairs
-% labeled before any depth result; 65/205 positive (24%); 29/30 answerable;
-% per-leg precision 0.51 / 0.12 / 0.09; unique legs contribute 19/65 (29%)
-% of relevant precedents.
+With relevance defined the obvious way --- a post-$T$ task is
+\emph{answerable} iff a metadata-linked prior PR exists strictly before
+$T$ --- the harness came back underpowered
+(Table~\ref{tab:underpowered}).
 
+\begin{table}[h]
+  \caption{Answerable post-$T$ tasks under the metadata-linked relevance
+  label, against a pre-registered power floor of $\ge 80$.}
+  \label{tab:underpowered}
+  \begin{tabular}{rrr}
+    \toprule
+    Cutoff $T$ (days back) & Post-$T$ tasks w/ issue & Answerable \\
+    \midrule
+    365 & 278 & \textbf{5} \\
+    455 & 306 & 4 \\
+    545 & 345 & 4 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Five is not a measurement; it is noise. The intellectually cheap move is to
+pivot the evaluation to the known-item number that already looks good and
+never mention the failure. We did not, because $n{=}5$ has two
+\emph{opposite} explanations with opposite consequences:
+
+\begin{itemize}
+  \item[\textbf{A.}] \emph{The label is too strict.} Metadata-linked
+    relevance misses precedents transferred by convention rather than by an
+    explicit issue link. Then the instrument is rescuable with a wider,
+    leak-free relevance definition.
+  \item[\textbf{B.}] \emph{Precedents are genuinely rare.} $n \approx 5$ is
+    real, and the honest output is a negative result: forward coverage is
+    structurally small.
+\end{itemize}
+
+One cannot tell A from B by staring at the number. We drew 30 random
+post-$T(365)$ tasks and hand-checked, independently of metadata links,
+whether a genuine relevant precedent existed strictly before $T$. A genuine
+pre-$T$ precedent existed for at least 14 of 30 under a strict reading, and
+up to roughly 29 of 30 under a lenient one: the metadata label undercounted
+true relevance by roughly \textbf{14--29$\times$}. Verdict: \textbf{A}. The
+first number was not the finding --- it was a symptom, and the probe
+identified the disease.
+
+% ---------------------------------------------------------------------------
+\section{Rebuilding Relevance: TREC Pooling with Human Calibration}
+\label{sec:pooling}
+
+If metadata links undercount relevance, relevance must be judged, not
+inferred. Judging every pair is infeasible, so we pool: for each task, the
+top candidates of three independent retrieval legs are unioned into a
+judgment pool.
+
+\paragraph{Pool composition.}
+\begin{itemize}
+  \item \texttt{eval} --- the evaluated production embedding retriever;
+  \item \texttt{bm25\_unique} --- candidates only lexical
+    BM25~\cite{robertson2009bm25} (over enriched text) surfaces;
+  \item \texttt{bge\_unique} --- candidates only a second-family embedder
+    (bge-m3~\cite{chen2024bge}) surfaces.
+\end{itemize}
+Each leg is included because each contributes relevant precedents the
+others miss; concretely, a BM25-only pool recalled just 72\% of
+judged-relevant candidates. Independence lives in the judgment, not in the
+pool --- the pool is deliberately a union.
+
+\paragraph{Blind gold set.}
+We hand-labeled 270 (task, candidate) pairs --- 30 tasks $\times$ 9
+candidates, three from each leg --- \emph{before} looking at any depth
+result, yes/no for genuine relevance. Density: 65 yes / 205 no (24\%
+positive). Coverage resolves the power failure: \textbf{29 of 30} tasks are
+answerable under judged relevance (versus 5 under the metadata label),
+confirming verdict A by hand.
+
+\begin{table}[h]
+  \caption{Per-leg precision on the blind gold set.}
+  \label{tab:legs}
+  \begin{tabular}{lrr}
+    \toprule
+    Leg & relevant / total & precision \\
+    \midrule
+    \texttt{eval} & 46 / 90 & 0.51 \\
+    \texttt{bge\_unique} & 11 / 90 & 0.12 \\
+    \texttt{bm25\_unique} & 8 / 90 & 0.09 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The production leg is precise --- every second candidate is relevant. The
+unique legs are low-precision but decisively non-zero: together they
+contribute 19 of 65 relevant precedents (29\%) that the main leg missed ---
+the classical pooling trade of coverage bought at the cost of
+precision~\cite{zobel1998reliable}. Neither the lexical nor the
+second-family leg can be dropped without biasing the pool.
+
+% ---------------------------------------------------------------------------
 \section{A Negative Result: The LLM Judge Fails Its Gate}
-% TODO(v0.2): pre-registered authority gate κ ≥ 0.6; results:
-% Sonnet 4.6 (phase-9 gold) 0.27; Opus 4.8 (phase-9 gold) 0.39;
-% Sonnet 4.6 (temporal gold) 0.39. Confusion matrix TP=23 FN=42 FP=7 TN=198
-% → precision 0.77, recall 0.35; misses concentrated on 10/11 bge-unique and
-% 6/8 bm25-unique relevant precedents. Decision: advisory-only; scaling
-% remains human-labeling-bound.
+\label{sec:judge}
 
+Hand-labeling 30 tasks rescued statistical power, but the instrument needs
+80+ tasks to clear its pre-registered floor, and hand-labeling roughly 720
+pairs per corpus does not scale. The plan was an LLM judge to label the
+full pool --- \emph{conditional} on passing a pre-registered authority
+gate: Cohen's $\kappa$ (judge vs.\ human) $\ge 0.6$~\cite{cohen1960}.
+
+It did not pass (Table~\ref{tab:judge}).
+
+\begin{table}[h]
+  \caption{LLM-judge calibration against human gold labels. The
+  pre-registered authority gate was $\kappa \ge 0.6$.}
+  \label{tab:judge}
+  \begin{tabular}{lrl}
+    \toprule
+    Judge (framing) & $\kappa$ vs.\ human & Verdict \\
+    \midrule
+    Sonnet 4.6 (phase-9 gold) & 0.27 & below floor \\
+    Opus 4.8 (phase-9 gold) & 0.39 & below floor \\
+    Sonnet 4.6 (temporal gold) & \textbf{0.39} & \textbf{below floor} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+On the temporal gold set the confusion matrix (human $\times$ judge) is
+TP = 23, FN = 42, FP = 7, TN = 198 --- precision 0.77, recall
+\textbf{0.35}. The judge misses 65\% of human-relevant precedents, and the
+misses concentrate exactly where it hurts: 10 of 11 \texttt{bge\_unique}
+and 6 of 8 \texttt{bm25\_unique} relevant precedents --- the semantic and
+convention-transfer cases the pool was widened to capture. The judge's
+blind spot is aligned with the pool's reason for existing.
+
+\paragraph{Decision.}
+The judge is retained \textbf{advisory-only}: its yes-labels are reasonably
+trustworthy (precision 0.77); its no-labels are not (recall 0.35), and it
+can never override the recall guardrail. We prefer reporting a slower,
+human-anchored result over laundering a coverage number through a labeler
+we have measured to be unreliable on the cases that matter. Consequently,
+the full-power forward-coverage number remains \emph{open} and
+human-labeling-bound; we track it as such rather than substituting a
+pretend value.
+
+% ---------------------------------------------------------------------------
 \section{Discussion}
-% TODO(v0.2): design guidance — pre-register gates; blind-label before
-% looking; first number is a symptom; negative results are results.
-% Threats to validity: single corpus (efcore); single embedding family in
-% the production leg; judge prompts not exhaustively engineered (framing
-% variation shown); English-language corpus.
+\label{sec:discussion}
 
+\paragraph{Design guidance.}
+Four practices did disproportionate work in this study. (1)
+\emph{Pre-register the gates}: the $\kappa \ge 0.6$ authority floor and the
+$\ge 80$-task power floor were fixed before any result existed, so a
+disappointing result could not be redefined into a passing one. (2)
+\emph{Blind-label before looking}: the gold set was labeled before any
+depth result was inspected, so labels could not be rationalized toward a
+desired outcome. (3) \emph{Treat the first number as a symptom}: $n{=}5$
+was not the answer; the probe that explained it was. (4) \emph{Report
+negative results as results}: a judge that fails calibration and a coverage
+question that remains open are stated plainly, with the numbers.
+
+\paragraph{Threats to validity.}
+Everything here is validated on a single corpus (\texttt{dotnet/efcore});
+the pipeline's connector seam supports further sources, but no second
+corpus is evaluated yet, and efcore's disciplined issue-linking culture
+likely makes our metadata-label finding \emph{conservative} for messier
+repositories. The production retriever uses a single embedding family;
+the pool mitigates but cannot eliminate family bias. Judge prompting was
+varied across two framings but not exhaustively engineered; a materially
+better judge may yet pass the gate, which is precisely why the gate is
+pre-registered rather than abandoned. The corpus is English-language.
+
+% ---------------------------------------------------------------------------
 \section{Conclusion}
-% TODO(v0.2)
+\label{sec:conclusion}
 
-% \bibliographystyle{ACM-Reference-Format}
-% \bibliography{references}
+Precedent retrieval over merged-PR history is easy to demonstrate and hard
+to measure. A frozen known-item instrument shows strong ranking quality
+(recall@5 = 0.90 on deduplicated \texttt{dotnet/efcore}); a leak-free
+temporal-holdout instrument for the harder forward-coverage question
+required rebuilding the relevance definition itself --- from metadata links
+(underpowered by 14--29$\times$) to TREC-pooled, blind human-calibrated
+judgments --- and exposed a measured failure of LLM-as-judge labeling
+($\kappa = 0.39 < 0.6$) concentrated on the cases that matter most. The
+instrument stands; the scalable labeler does not, yet. We release the
+system, the evaluation harness, and the hash-pinned manifests, and we
+report the open questions as open.
+
+% ---------------------------------------------------------------------------
+\section*{Data Availability}
+The system, evaluation harness, gold-set labels, and hash-pinned manifests
+are available in the open-source repository:
+\url{https://github.com/ivanovresearch/senrah} (evaluation account in
+\texttt{docs/EVAL.md}).
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
 
 \end{document}
