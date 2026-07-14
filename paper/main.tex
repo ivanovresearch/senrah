@@ -1,46 +1,49 @@
-% Leak-Free Temporal Evaluation of Precedent Retrieval over Merged-PR History
+% What Does Precedent Retrieval Actually Retrieve?
 % Target: arXiv cs.SE preprint (cross-list cs.IR), later MSR technical track.
 % Build: latexmk -pdf main.tex  (or upload the paper/ directory to Overleaf).
-% v0.2 — full draft. Every number traces to docs/EVAL.md (hash-pinned manifests).
+% v0.3 — reviewer pass: main finding surfaced, figures added, deployment A/B
+% section added (eval/ab/RESULTS.md), system section expanded, abstract cut.
+% Every number traces to docs/EVAL.md or eval/ab/RESULTS.md.
 \documentclass[sigconf,nonacm]{acmart}
 
 \usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
 
 \begin{document}
 
-\title{Leak-Free Temporal Evaluation of Precedent Retrieval over
-  Merged Pull-Request History}
+\title{Ranking Is Not the Bottleneck: A Leak-Free Evaluation of
+  Precedent Retrieval over Merged Pull-Request History}
 
 \author{Vladimir Ivanov}
 \affiliation{%
   \institution{Independent Researcher}
-  \country{}}
+  \country{Georgia}}
 \email{vladimir@ivanovresearch.dev}
 
 \begin{abstract}
-Retrieval tools for AI coding agents are trivial to demo and hard to
-measure. We study the evaluation of \emph{precedent retrieval} --- ranked
-semantic search over a repository's merged pull-request history, where each
-item is a problem--solution pair --- and show that the standard known-item
-protocol, while necessary, systematically overstates practical utility. On a
-backport-deduplicated corpus of 575 merged PRs from \texttt{dotnet/efcore},
-known-item retrieval achieves recall@5 = 0.90 (MRR@10 = 0.79, 218 held-out
-queries), yet this measures only ranking quality. We construct a leak-free
-temporal-holdout instrument for the harder question --- forward coverage:
-whether a genuinely new task retrieves a relevant precedent that strictly
-predates it. A metadata-linked relevance label left the instrument
-underpowered (5 answerable tasks against a pre-registered floor of 80); a
-30-task labeled probe attributed the failure to the label, not the corpus,
-undercounting true relevance by 14--29$\times$. We rebuild relevance with
-TREC-style pooling over three retrieval legs and a blind human gold set of
-270 pairs (24\% positive; 29/30 tasks answerable). An LLM judge intended to
-scale the labeling failed its pre-registered calibration gate (Cohen's
-$\kappa = 0.39$ vs.\ a 0.6 floor; recall 0.35 against human labels,
-concentrated exactly on the semantic-transfer cases the pool exists to
-capture) and was retained as advisory-only. We report this negative result
-as a first-class finding and derive design guidance for evaluating
-history-grounded retrieval without laundering coverage numbers through
-uncalibrated judges.
+Precedent retrieval serves an AI coding agent the merged pull-request
+history of its own repository, each item a problem--solution pair. We ask
+what its evaluation actually measures. On a backport-deduplicated corpus of
+575 merged PRs (\texttt{dotnet/efcore}), known-item retrieval is strong
+(recall@5 = 0.90 over 218 held-out queries) --- yet three further
+instruments show that ranking quality is not the binding constraint.
+(1)~In a leak-free temporal holdout, a metadata-linked relevance label
+finds only 5 of 278 new tasks answerable, while blind human judgment finds
+29 of 30: \textbf{the standard label misses 93--97\% of true precedents}.
+(2)~Under TREC-style pooling, \textbf{29\% of judged-relevant precedents
+surface only outside the primary embedding retriever} --- single-system
+evaluation is structurally biased. (3)~An LLM judge fails its
+pre-registered calibration gate (Cohen's $\kappa = 0.39 < 0.6$; recall
+0.35 against human labels), missing precisely the convention-transfer
+cases pooling exists to capture; it is retained advisory-only. (4)~A
+12-task paired deployment probe shows no outcome uplift on a shallow
+3.5-month corpus but also zero harm; the only two value events were
+codebase-convention transfers from the deepest history available.
+Together these results locate the bottleneck of precedent retrieval in
+\emph{relevance definition and corpus depth}, not ranking --- and imply
+that retrieval evaluations which stop at known-item metrics measure the
+wrong thing.
 \end{abstract}
 
 \keywords{mining software repositories, retrieval evaluation, AI coding
@@ -52,75 +55,107 @@ agents, temporal holdout, TREC pooling, LLM-as-judge calibration}
 \section{Introduction}
 \label{sec:intro}
 
-AI coding agents increasingly operate inside mature codebases whose
-conventions, workarounds, and edge-case lore live not in the current source
-but in years of merged pull requests. \emph{Precedent retrieval} makes that
-history available at write time: each merged PR is indexed as a
-problem--solution pair (the issue or description that states what was wrong,
-and the diff the team actually accepted), and an agent working on a new task
-retrieves the most similar prior precedents. The reference implementation
-studied here, \textsc{senrah}, is an open-source, self-hosted retrieval
-server that embeds problem and solution texts separately and serves ranked
-results to any agent over the Model Context Protocol~\cite{mcp2024}.
+AI coding agents fail most where codebases are oldest: the conventions,
+workarounds, and edge-case lore of a mature repository live not in its
+current source --- which context tools already embed --- but in years of
+merged pull requests that no base model has seen. \emph{Precedent
+retrieval} targets exactly that gap: index every merged PR as a
+problem--solution pair (the issue text that states what was wrong, and the
+diff the team actually accepted), and let an agent working on a new task
+retrieve how similar problems were actually solved \emph{in this codebase}
+(Figure~\ref{fig:pipeline}).
 
-This paper is not about the retriever. It is about the measurement --- which
-we found to be, by a wide margin, the harder engineering problem. A
-retrieval tool is easy to make \emph{look} good: pick a few queries where it
-returns something plausible, screenshot the result, ship. The failure mode
-of that approach is that one never learns whether the tool works; one learns
-whether one can cherry-pick. We therefore ask two distinct questions:
+The uncomfortable question is how to know whether such a system works.
+The standard answer --- known-item retrieval, ``does the PR known to fix
+this issue rank in the top-$k$?'' --- is cheap, reproducible, and, we will
+argue, systematically misleading when read as a statement about deployment
+utility. It measures ranking quality. It says nothing about whether a
+\emph{genuinely new} task can find a relevant precedent that predates it,
+which is the question that decides whether precedent retrieval is useful
+at all.
 
-\begin{enumerate}
-  \item \textbf{Ranking quality.} When a relevant target is known to exist,
-    does it rank near the top? This is the classical known-item
-    setup~\cite{sparck1975ideal,voorhees2000variations}.
-  \item \textbf{Forward coverage.} For a \emph{new} task, does a
-    genuinely-relevant precedent that strictly predates it exist in the
-    history, and does the system retrieve it --- with no leakage from the
-    future? This is the question that decides whether precedent retrieval
-    is actually useful, and it is the one that is easy to get subtly,
-    invalidatingly wrong.
-\end{enumerate}
+We built the instruments to answer that harder question over the
+\texttt{dotnet/efcore} history, holding a strict discipline: gates
+pre-registered before results existed, relevance labeled blind, leakage
+controls checked rather than assumed. The resulting measurements ---
+including two negative results we report at full strength --- compose into
+one finding:
 
-Answering the second question forced a sequence of methodological decisions
-that we believe generalize beyond our system, and one measured failure that
-we believe the community should see reported rather than buried. Our
-contributions:
+\begin{quote}
+\textbf{Ranking is not the bottleneck of precedent retrieval. The
+relevance definition and the depth of the indexed history are.}
+\end{quote}
+
+Specifically:
 
 \begin{itemize}
-  \item[\textbf{C1.}] A \textbf{leak-free temporal-holdout design} for
-    retrieval over PR history, with leakage controls that are checked
-    rather than assumed: the corpus/query split freezes on merge timestamps
-    and original ingest state (PR bodies are editable after the fact),
-    relevance labels freeze together with the corpus boundary, and the
-    scorer applies the product's own score threshold so the instrument
-    measures what a user actually gets.
-  \item[\textbf{C2.}] Evidence that \textbf{metadata-linked relevance labels
-    underpower temporal instruments}: under an issue-link label, only 5 of
-    278 post-cutoff tasks were answerable against a pre-registered floor of
-    80. A 30-task labeled probe attributed the failure to the label (a
-    14--29$\times$ undercount of true relevance), not to genuine precedent
-    scarcity --- a distinction that a silent pivot back to known-item
-    metrics would have hidden.
-  \item[\textbf{C3.}] A \textbf{TREC-pooled, human-calibrated relevance
-    definition} for PR-history retrieval. A blind gold set of 270
-    (task, candidate) pairs, labeled before any system result was
-    inspected, validates the three-leg union pool: the production embedding
-    leg is precise (0.51), and the low-precision lexical and second-family
-    embedding legs still contribute 29\% of all relevant precedents ---
-    the classical pooling trade~\cite{zobel1998reliable}.
-  \item[\textbf{C4.}] A \textbf{negative result on LLM-as-judge}: two
-    frontier models fail a pre-registered calibration gate
-    ($\kappa \le 0.39 < 0.6$)~\cite{cohen1960}, with misses concentrated
-    precisely on the semantic and convention-transfer cases the pool was
-    widened to capture. We keep the judge advisory-only and accept that
-    scaling the instrument remains human-labeling-bound.
+  \item[\textbf{F1.}] Ranking quality is high and stable: recall@5 = 0.90
+    on a backport-deduplicated known-item benchmark
+    (\S\ref{sec:knownitem}). Yet the same system, evaluated temporally
+    with the field's default relevance label (explicit issue links),
+    appears almost useless: 5 of 278 new tasks answerable. Blind human
+    judgment on a 30-task probe reverses the verdict --- 29 of 30 tasks
+    have a genuine prior precedent --- exposing that \textbf{the
+    metadata label misses 93--97\% of true precedents}
+    (\S\ref{sec:power}).
+  \item[\textbf{F2.}] Relevance, once judged rather than inferred, is
+    \emph{plural}: 29\% of judged-relevant precedents surface only
+    through retrieval legs other than the primary embedding system
+    (\S\ref{sec:pooling}). Evaluating a retriever against candidates it
+    alone surfaces is structurally self-confirming.
+  \item[\textbf{F3.}] The obvious scaling move --- an LLM judge ---
+    fails its pre-registered calibration gate ($\kappa \le 0.39 < 0.6$),
+    and its misses concentrate on exactly the convention-transfer
+    relevance that pooling exists to capture (\S\ref{sec:judge}). We keep
+    it advisory-only.
+  \item[\textbf{F4.}] In a 12-task paired deployment probe with live
+    agents, a shallow corpus (3.5 months of history) produced no outcome
+    uplift --- and no harm: agents respected the system's
+    below-threshold signal in 8 of 12 tasks, zero runs were misled, and
+    the only two value events were convention transfers from the deepest
+    history available (\S\ref{sec:ab}). Utility tracks corpus depth, not
+    ranking headroom.
 \end{itemize}
 
-Throughout, we held four principles: pre-register the gate before the
-results exist; label blind before you look; treat the first number as a
-symptom, not a finding; and report negative results as results, because a
-measurement you cannot trust is worse than no measurement.
+Our contributions: (i)~the first leak-free temporal-holdout protocol for
+retrieval over PR history, with leakage controls that are checked, not
+assumed; (ii)~empirical evidence that metadata-linked relevance labels
+underpower temporal instruments by an order of magnitude, diagnosed by a
+blind labeled probe; (iii)~a TREC-pooled, human-calibrated relevance
+definition for PR-history retrieval, validated per retrieval leg; and
+(iv)~a measured negative result on LLM-as-judge labeling for this task,
+with its failure mode characterized. The system, harness, and hash-pinned
+manifests are open source.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=3.5mm,
+  box/.style={draw, rounded corners=1pt, minimum height=5.5mm,
+    minimum width=21mm, font=\small, align=center},
+  lbl/.style={font=\scriptsize\itshape, text=black!60},
+  arr/.style={-{Stealth[length=2mm]}, thick}]
+  \node[box] (pr) {merged PR};
+  \node[box, below left=4mm and -8mm of pr] (prob) {problem\\ \scriptsize title + body};
+  \node[box, below right=4mm and -8mm of pr] (sol) {solution\\ \scriptsize diff};
+  \node[box, below=13mm of pr, minimum width=44mm] (db)
+    {PostgreSQL + pgvector\\ \scriptsize two embeddings per PR, HNSW};
+  \node[box, below=4mm of db, minimum width=44mm] (mcp)
+    {retrieval server (MCP)\\ \scriptsize weighted composite + threshold};
+  \node[box, below=4mm of mcp] (agent) {AI coding agent};
+  \draw[arr] (pr) -- (prob);
+  \draw[arr] (pr) -- (sol);
+  \draw[arr] (prob) -- (db) node[midway, left, lbl] {embed};
+  \draw[arr] (sol) -- (db) node[midway, right, lbl] {embed};
+  \draw[arr] (db) -- (mcp);
+  \draw[arr] (mcp) -- (agent) node[midway, right, lbl] {ranked precedents};
+\end{tikzpicture}
+\caption{Precedent retrieval. Each merged PR is indexed as a
+problem--solution pair; an agent queries in natural language and receives
+ranked precedents with a confidence label, or an explicit below-threshold
+signal.}
+\label{fig:pipeline}
+\end{figure}
 
 % ---------------------------------------------------------------------------
 \section{Background and Related Work}
@@ -133,9 +168,9 @@ requires no relevance judging beyond the query--target link, which makes it
 cheap and reproducible, but it measures only whether a target the system is
 \emph{told} exists can be ranked highly. Voorhees's work on judgment
 variation~\cite{voorhees2000variations} and Zobel's analysis of pooling
-reliability~\cite{zobel1998reliable} establish the broader point we rely
-on: what one measures is determined by how relevance is defined, and
-narrow definitions bias conclusions.
+reliability~\cite{zobel1998reliable} establish the point we build on: what
+one measures is determined by how relevance is defined, and narrow
+definitions bias conclusions.
 
 \paragraph{Temporal splits and leakage.}
 Time-respecting evaluation is standard advice in mining software
@@ -157,7 +192,7 @@ pooling~\cite{voorhees2000variations,zobel1998reliable} unions the top
 candidates of multiple independent systems into a judgment pool; relevance
 is then judged only inside the pool. Pool composition is a known source of
 bias --- a pool built from one system family under-represents what only
-other families retrieve. Our pool (\S\ref{sec:pooling}) therefore unions an
+other families retrieve. Our pool (\S\ref{sec:pooling}) unions an
 embedding retriever, a lexical BM25 leg~\cite{robertson2009bm25}, and a
 second-family embedder (bge-m3~\cite{chen2024bge}), and we validate each
 leg's contribution against blind human labels.
@@ -170,7 +205,7 @@ pre-registered a Cohen's $\kappa$~\cite{cohen1960} authority gate and
 report a failure against it (\S\ref{sec:judge}); the failure mode ---
 misses concentrated on convention-transfer relevance --- is, to our
 knowledge, underdocumented and directly actionable for others building
-retrieval evals over software history.
+retrieval evaluations over software history.
 
 \paragraph{Context for coding agents.}
 Contemporary context tools embed \emph{current} code (semantic code
@@ -185,19 +220,40 @@ legacy codebases.
 \section{System Under Evaluation}
 \label{sec:system}
 
-\textsc{senrah} ingests merged PRs from a repository (resumable traversal;
-bot and automation filtering; oversized-PR exclusion), stores problem text
-and diff, and embeds them separately with
-\texttt{text-embedding-3-small}~\cite{openai2024embeddings} (1536
-dimensions, token-aware truncation) into PostgreSQL with
-pgvector HNSW indexes~\cite{malkov2020hnsw} on both columns. Retrieval
-embeds the query once, oversamples by approximate nearest-neighbor search
-on both columns, and re-ranks by a weighted problem/solution cosine
-composite; results below a score threshold are withheld and surfaced as a
-below-threshold hint rather than returned as matches. In the frozen
-evaluation protocol the problem/solution weights are 0.7/0.3. The system is
-open source; all evaluation manifests are hash-pinned and runs are
-deterministic.
+\textsc{senrah} is an open-source, self-hosted retrieval server exposed to
+agents over the Model Context Protocol~\cite{mcp2024}. We describe the
+pipeline in the detail needed to interpret the experiments.
+
+\paragraph{What is indexed.}
+Ingestion pulls every merged PR (resumable traversal; bots and automation
+filtered by stop-list and title patterns; oversized PRs excluded). Two
+texts are constructed per PR: the \emph{problem} text --- PR title
+concatenated with the PR body --- and the \emph{solution} text --- the raw
+unified diff. Each is truncated by \emph{model tokens}, never characters,
+with independent budgets (1{,}500 tokens for problem, 6{,}000 for diff),
+so titles always survive truncation.
+
+\paragraph{Embedding and storage.}
+Both texts are embedded independently with
+\texttt{text-embedding-3-small}~\cite{openai2024embeddings} (1{,}536
+dimensions) and stored in PostgreSQL with pgvector; each embedding column
+carries an HNSW index~\cite{malkov2020hnsw} (cosine distance), so
+incremental ingest requires no index rebuild. The embedding model and
+version are recorded per row, giving a re-embedding migration path.
+
+\paragraph{Scoring.}
+A query is embedded once. Approximate nearest-neighbor search oversamples
+candidates on \emph{both} columns, and candidates are re-ranked by a
+weighted composite of the two cosine similarities:
+$\mathit{score} = w_p \cdot \mathit{sim}_\mathit{problem} + w_s \cdot
+\mathit{sim}_\mathit{solution}$.
+The shipped default is $w_p/w_s = 0.6/0.4$; the frozen evaluation protocol
+uses $0.7/0.3$ with score threshold $0.45$, fixed when the protocol was
+registered. (A systematic weight ablation is future work; the deployment
+probe in \S\ref{sec:ab} suggests weight tuning is second-order relative to
+corpus depth.) Results below the threshold are withheld and replaced by an
+explicit below-threshold signal --- a design choice that turns out to
+matter for deployment safety (\S\ref{sec:ab}).
 
 % ---------------------------------------------------------------------------
 \section{Instrument 1: Known-Item Retrieval}
@@ -218,9 +274,7 @@ appears several times, so \emph{a} hit is easy and recall inflates. We
 detect backport clusters from stored diffs using union-find over
 \emph{corroborated} edges --- diff similarity alone is never allowed to
 merge two PRs --- and score \textbf{per-cluster}: a hit on any cluster
-member counts once, and distractors are likewise counted per-cluster. The
-divergence between per-PR and per-cluster scoring is demonstrated on a
-fixture where the two disagree.
+member counts once, and distractors are likewise counted per-cluster.
 
 \begin{table}[h]
   \caption{Known-item retrieval on deduplicated \texttt{dotnet/efcore}
@@ -243,19 +297,48 @@ Known-item recall answers ``can the system rank a target it is told
 exists.'' It says nothing about coverage for genuinely new work. Worse, on
 a deeper corpus known-item recall can \emph{fall}, because more PRs means
 more near-duplicate distractors competing for top-$k$ slots --- so
-optimizing this number alone can penalize exactly the corpus growth that
-increases real utility. A second instrument is required.
+optimizing this number alone penalizes exactly the corpus growth that
+\S\ref{sec:ab} will show is where utility lives.
 
 % ---------------------------------------------------------------------------
 \section{Instrument 2: Leak-Free Temporal Holdout}
 \label{sec:temporal}
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\small]
+  \draw[thick, -{Stealth[length=2.5mm]}] (0,0) -- (8.2,0)
+    node[below=1mm, pos=0.98, font=\scriptsize] {time};
+  \draw[very thick, red!70] (5.2,-0.28) -- (5.2,0.75)
+    node[above, font=\small] {cutoff $T$};
+  \draw[decorate, thick] (0.1,0.12) -- (5.1,0.12);
+  \node[above, font=\small] at (2.6,0.3)
+    {retrievable corpus \scriptsize($\mathit{merged\_at} < T$)};
+  \draw[decorate, thick] (5.3,0.12) -- (8.0,0.12);
+  \node[above, font=\small] at (6.7,0.3)
+    {new tasks \scriptsize($> T$)};
+  \foreach \x in {0.5,1.1,1.6,2.4,3.0,3.7,4.3,4.8}
+    \node[circle, fill=black!55, inner sep=1.1pt] at (\x,0) {};
+  \foreach \x in {5.6,6.3,7.0,7.6}
+    \node[circle, draw=black!70, inner sep=1.1pt] at (\x,0) {};
+  \draw[-{Stealth[length=2mm]}, dashed, black!60]
+    (6.3,-0.12) to[bend left=25] (3.0,-0.14);
+  \node[below, font=\scriptsize, black!60] at (4.6,-0.5)
+    {does a relevant precedent strictly before $T$ get retrieved?};
+\end{tikzpicture}
+\caption{Temporal holdout. The split freezes on merge timestamps and
+original ingest state; labels freeze together with the corpus boundary;
+the scorer applies the product's own score threshold.}
+\label{fig:temporal}
+\end{figure}
+
 \paragraph{Design.}
 Pick a cutoff time $T$. Everything merged strictly before $T$ is the
 retrievable corpus; everything merged strictly after $T$ is the incoming
-task stream. For each post-$T$ task: does a relevant precedent exist
-strictly before $T$, and does the system retrieve it? This simulates the
-deployed setting --- an agent working today, retrieving from history.
+task stream (Figure~\ref{fig:temporal}). For each post-$T$ task: does a
+relevant precedent exist strictly before $T$, and does the system retrieve
+it? This simulates the deployed setting --- an agent working today,
+retrieving from history.
 
 \paragraph{Leakage controls (where temporal evals die).}
 \begin{itemize}
@@ -281,9 +364,9 @@ every depth rung materializable from it), and a deep cluster map built
 \section{The Power Failure and Its Diagnosis}
 \label{sec:power}
 
-With relevance defined the obvious way --- a post-$T$ task is
-\emph{answerable} iff a metadata-linked prior PR exists strictly before
-$T$ --- the harness came back underpowered
+With relevance defined the way the field usually defaults to --- a
+post-$T$ task is \emph{answerable} iff a metadata-linked prior PR exists
+strictly before $T$ --- the harness came back underpowered
 (Table~\ref{tab:underpowered}).
 
 \begin{table}[h]
@@ -301,29 +384,52 @@ $T$ --- the harness came back underpowered
   \end{tabular}
 \end{table}
 
-Five is not a measurement; it is noise. The intellectually cheap move is to
-pivot the evaluation to the known-item number that already looks good and
-never mention the failure. We did not, because $n{=}5$ has two
-\emph{opposite} explanations with opposite consequences:
+Five is not a measurement; it is noise. The intellectually cheap move is
+to pivot the evaluation to the known-item number that already looks good
+and never mention the failure. We did not, because $n{=}5$ has two
+\emph{opposite} explanations with opposite consequences: either
+(\textbf{A}) the label is too strict --- metadata-linked relevance misses
+precedents transferred by convention rather than by explicit issue link
+--- or (\textbf{B}) precedents are genuinely rare and the honest output is
+a negative coverage result.
 
-\begin{itemize}
-  \item[\textbf{A.}] \emph{The label is too strict.} Metadata-linked
-    relevance misses precedents transferred by convention rather than by an
-    explicit issue link. Then the instrument is rescuable with a wider,
-    leak-free relevance definition.
-  \item[\textbf{B.}] \emph{Precedents are genuinely rare.} $n \approx 5$ is
-    real, and the honest output is a negative result: forward coverage is
-    structurally small.
-\end{itemize}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=2.5mm and 8mm,
+  box/.style={draw, rounded corners=1pt, minimum height=5.5mm,
+    font=\scriptsize, align=center, inner sep=2.5pt},
+  verdict/.style={font=\scriptsize\bfseries},
+  arr/.style={-{Stealth[length=1.8mm]}, thick}]
+  \node[box, minimum width=34mm] (task)
+    {new task \#38297\\ Cosmos: translate top-level \texttt{Any()}};
+  \node[box, below left=6mm and -14mm of task, minimum width=30mm] (meta)
+    {metadata label:\\ no linked prior PR};
+  \node[box, below right=6mm and -14mm of task, minimum width=34mm] (human)
+    {human judgment:\\ precedent \#37603 --- same\\
+     \texttt{WithIn} root-query pattern};
+  \node[verdict, below=2mm of meta, text=red!70] {answerable: NO};
+  \node[verdict, below=2mm of human, text=green!50!black] {answerable: YES};
+  \draw[arr] (task) -- (meta);
+  \draw[arr] (task) -- (human);
+\end{tikzpicture}
+\caption{Why metadata labels undercount (real case from the deployment
+probe): the fix for \#38297 reused the root-query detection pattern
+introduced by \#37603 --- a genuine precedent transferred by convention,
+invisible to issue-link metadata.}
+\label{fig:metadata}
+\end{figure}
 
 One cannot tell A from B by staring at the number. We drew 30 random
 post-$T(365)$ tasks and hand-checked, independently of metadata links,
-whether a genuine relevant precedent existed strictly before $T$. A genuine
-pre-$T$ precedent existed for at least 14 of 30 under a strict reading, and
-up to roughly 29 of 30 under a lenient one: the metadata label undercounted
-true relevance by roughly \textbf{14--29$\times$}. Verdict: \textbf{A}. The
-first number was not the finding --- it was a symptom, and the probe
-identified the disease.
+whether a genuine relevant precedent existed strictly before $T$. A
+genuine pre-$T$ precedent existed for at least 14 of 30 under a strict
+reading, and up to roughly 29 of 30 under a lenient one: \textbf{the
+metadata label undercounted true relevance by 14--29$\times$ ---
+equivalently, it missed 93--97\% of true precedents}
+(Figure~\ref{fig:metadata} shows a representative real case). Verdict:
+\textbf{A}. The first number was not the finding --- it was a symptom, and
+the probe identified the disease.
 
 % ---------------------------------------------------------------------------
 \section{Rebuilding Relevance: TREC Pooling with Human Calibration}
@@ -332,28 +438,20 @@ identified the disease.
 If metadata links undercount relevance, relevance must be judged, not
 inferred. Judging every pair is infeasible, so we pool: for each task, the
 top candidates of three independent retrieval legs are unioned into a
-judgment pool.
-
-\paragraph{Pool composition.}
-\begin{itemize}
-  \item \texttt{eval} --- the evaluated production embedding retriever;
-  \item \texttt{bm25\_unique} --- candidates only lexical
-    BM25~\cite{robertson2009bm25} (over enriched text) surfaces;
-  \item \texttt{bge\_unique} --- candidates only a second-family embedder
-    (bge-m3~\cite{chen2024bge}) surfaces.
-\end{itemize}
-Each leg is included because each contributes relevant precedents the
-others miss; concretely, a BM25-only pool recalled just 72\% of
-judged-relevant candidates. Independence lives in the judgment, not in the
-pool --- the pool is deliberately a union.
+judgment pool --- \texttt{eval} (the evaluated production embedding
+retriever), \texttt{bm25\_unique} (candidates only lexical
+BM25~\cite{robertson2009bm25} surfaces), and \texttt{bge\_unique}
+(candidates only a second-family embedder, bge-m3~\cite{chen2024bge},
+surfaces). Each leg is included because each contributes relevant
+precedents the others miss; a BM25-only pool recalled just 72\% of
+judged-relevant candidates.
 
 \paragraph{Blind gold set.}
 We hand-labeled 270 (task, candidate) pairs --- 30 tasks $\times$ 9
-candidates, three from each leg --- \emph{before} looking at any depth
-result, yes/no for genuine relevance. Density: 65 yes / 205 no (24\%
-positive). Coverage resolves the power failure: \textbf{29 of 30} tasks are
-answerable under judged relevance (versus 5 under the metadata label),
-confirming verdict A by hand.
+candidates, three per leg --- \emph{before} looking at any depth result.
+Density: 65 yes / 205 no (24\% positive). Coverage resolves the power
+failure: \textbf{29 of 30} tasks are answerable under judged relevance
+(versus 5 of 278 under the metadata label).
 
 \begin{table}[h]
   \caption{Per-leg precision on the blind gold set.}
@@ -371,10 +469,12 @@ confirming verdict A by hand.
 
 The production leg is precise --- every second candidate is relevant. The
 unique legs are low-precision but decisively non-zero: together they
-contribute 19 of 65 relevant precedents (29\%) that the main leg missed ---
-the classical pooling trade of coverage bought at the cost of
+contribute \textbf{19 of 65 relevant precedents (29\%) that the main leg
+missed} --- the classical pooling trade of coverage bought at the cost of
 precision~\cite{zobel1998reliable}. Neither the lexical nor the
-second-family leg can be dropped without biasing the pool.
+second-family leg can be dropped without biasing the pool: an evaluation
+that judges only what the evaluated system retrieves is structurally
+self-confirming.
 
 % ---------------------------------------------------------------------------
 \section{A Negative Result: The LLM Judge Fails Its Gate}
@@ -422,54 +522,127 @@ human-labeling-bound; we track it as such rather than substituting a
 pretend value.
 
 % ---------------------------------------------------------------------------
+\section{Deployment Probe: A Paired A/B on Live Tasks}
+\label{sec:ab}
+
+Retrieval metrics, however honest, are proxies. As a reality check we ran
+a paired A/B on 12 real \texttt{efcore} tasks (well-specified bug reports,
+selected by a deterministic filter): the same agent model solved each task
+twice --- once with precedent retrieval available (treatment), once
+without (control) --- under a protocol frozen before the last pairs
+landed. Outcome metrics: file-level and symbol-level recall of the
+agent's patch against the actual merged fix. The corpus available to the
+treatment arm was shallow: 264 PRs, roughly 3.5 months of history.
+
+\paragraph{Outcome.}
+A dead heat: 6 control / 4 treatment / 2 ties (two-sided sign test on the
+10 non-ties, $p \approx 0.75$); mean file recall 0.55 vs.\ 0.54. On these
+outcome metrics the system neither helped nor hurt.
+
+\paragraph{What the outcome metrics do not show.}
+Categorizing all 12 treatment runs:
+\begin{itemize}
+  \item \emph{Exact solution shape retrieved:} 0.
+  \item \emph{Codebase-convention transfer:} 2 clear (+2 weak). The fix
+    for \#38297 reused the root-query detection pattern of \#37603; the
+    fix for \#38271 adopted \#37652's pattern of excluding
+    full-text/vector/JSON indexes from a DDL transform. Both transfers
+    came from the deepest history present in the shallow corpus, and both
+    pairs also scored at or near the top of the outcome metrics.
+  \item \emph{Found but useless:} 8 --- scores clustered 0.31--0.49,
+    mostly below the 0.45 threshold; agents read the below-threshold
+    signal and ignored the results.
+  \item \emph{Misled by a precedent:} \textbf{0.} The explicit
+    below-threshold signal did its protective job.
+\end{itemize}
+
+\paragraph{Reading.}
+On a 3.5-month corpus, genuine precedents for novel bugs are rare --- the
+correct answer to most queries is ``nothing relevant,'' which the system
+reports honestly and agents respect. The two value events that did occur
+were convention transfers from the oldest history available, and 9 of 12
+pairs converged on essentially the same fix regardless of arm ---
+consistent with the task profile (well-specified bug reports that already
+pin the fix location). This locates the improvement axis in \emph{corpus
+depth and task profile}, not in re-ranking the same shallow corpus ---
+converging, from the deployment side, with what the temporal instrument
+showed from the evaluation side.
+
+% ---------------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
 
+\paragraph{The composite finding.}
+Four instruments, one picture. Known-item says ranking is strong (0.90).
+The temporal instrument says the field's default relevance label hides
+93--97\% of true precedents. Pooling says 29\% of true relevance is
+invisible to any single-system evaluation. The deployment probe says
+utility on a shallow corpus is bounded by content, not ranking --- and
+that an honest below-threshold signal converts ``nothing relevant'' from
+a failure mode into safe behavior. None of these facts is visible from
+the known-item number alone; three of the four would be invisible even in
+principle.
+
+\paragraph{Why merged-PR history?}
+Among the candidate substrates for precedent retrieval, merged PRs are the
+only one that bundles a stated problem, a reviewed and \emph{accepted}
+solution, and a timestamp of acceptance. Commits are too granular and
+their messages rarely state the problem; issues state problems without
+solutions; Stack Overflow answers lack codebase specificity and licensing
+clarity; current-code search~\cite{husain2019codesearchnet} shows what the
+code \emph{is}, not how the team changes it. The merged PR is where a
+team's intent, review standards, and actual practice
+coincide~\cite{gousios2014exploratory}.
+
 \paragraph{Design guidance.}
-Four practices did disproportionate work in this study. (1)
-\emph{Pre-register the gates}: the $\kappa \ge 0.6$ authority floor and the
-$\ge 80$-task power floor were fixed before any result existed, so a
-disappointing result could not be redefined into a passing one. (2)
-\emph{Blind-label before looking}: the gold set was labeled before any
-depth result was inspected, so labels could not be rationalized toward a
-desired outcome. (3) \emph{Treat the first number as a symptom}: $n{=}5$
-was not the answer; the probe that explained it was. (4) \emph{Report
-negative results as results}: a judge that fails calibration and a coverage
+Four practices did disproportionate work. (1)~\emph{Pre-register the
+gates}: the $\kappa \ge 0.6$ authority floor and the $\ge 80$-task power
+floor were fixed before any result existed, so a disappointing result
+could not be redefined into a passing one. (2)~\emph{Blind-label before
+looking}. (3)~\emph{Treat the first number as a symptom}: $n{=}5$ was not
+the answer; the probe that explained it was. (4)~\emph{Report negative
+results as results}: a judge that fails calibration and a coverage
 question that remains open are stated plainly, with the numbers.
 
 \paragraph{Threats to validity.}
 Everything here is validated on a single corpus (\texttt{dotnet/efcore});
-the pipeline's connector seam supports further sources, but no second
-corpus is evaluated yet, and efcore's disciplined issue-linking culture
-likely makes our metadata-label finding \emph{conservative} for messier
-repositories. The production retriever uses a single embedding family;
-the pool mitigates but cannot eliminate family bias. Judge prompting was
+efcore's disciplined issue-linking culture likely makes the metadata-label
+finding \emph{conservative} for messier repositories. The production
+retriever uses a single embedding family; the pool mitigates but cannot
+eliminate family bias. The deployment probe is small ($N{=}12$), uses one
+agent model, and over-represents well-specified bug reports --- the task
+profile least likely to benefit from precedents. Judge prompting was
 varied across two framings but not exhaustively engineered; a materially
-better judge may yet pass the gate, which is precisely why the gate is
-pre-registered rather than abandoned. The corpus is English-language.
+better judge may yet pass the gate, which is why the gate is
+pre-registered rather than abandoned. A systematic ablation of the
+problem/solution weights, and an error taxonomy over the known-item
+misses, are planned follow-ups. The corpus is English-language.
 
 % ---------------------------------------------------------------------------
 \section{Conclusion}
 \label{sec:conclusion}
 
 Precedent retrieval over merged-PR history is easy to demonstrate and hard
-to measure. A frozen known-item instrument shows strong ranking quality
-(recall@5 = 0.90 on deduplicated \texttt{dotnet/efcore}); a leak-free
-temporal-holdout instrument for the harder forward-coverage question
-required rebuilding the relevance definition itself --- from metadata links
-(underpowered by 14--29$\times$) to TREC-pooled, blind human-calibrated
-judgments --- and exposed a measured failure of LLM-as-judge labeling
-($\kappa = 0.39 < 0.6$) concentrated on the cases that matter most. The
-instrument stands; the scalable labeler does not, yet. We release the
-system, the evaluation harness, and the hash-pinned manifests, and we
-report the open questions as open.
+to measure. Measured honestly, its ranking is strong (recall@5 = 0.90),
+its default relevance labels are an order of magnitude too narrow
+(93--97\% of true precedents missed), 29\% of true relevance is invisible
+to single-system evaluation, the obvious scalable labeler fails its
+calibration gate ($\kappa = 0.39 < 0.6$) precisely on the cases that
+matter, and deployed utility tracks corpus depth rather than ranking
+headroom. The instruments stand; the shortcuts do not. We release the
+system, the harness, and the hash-pinned manifests, and we report the open
+questions as open. We hope future benchmarks for retrieval in software
+engineering adopt leak-free temporal evaluation with judged relevance as
+the default --- and treat known-item retrieval as what it is: a necessary
+smoke test, not a verdict.
 
 % ---------------------------------------------------------------------------
 \section*{Data Availability}
 The system, evaluation harness, gold-set labels, and hash-pinned manifests
 are available in the open-source repository:
 \url{https://github.com/ivanovresearch/senrah} (evaluation account in
-\texttt{docs/EVAL.md}).
+\texttt{docs/EVAL.md}; deployment-probe protocol and per-run scores in
+\texttt{eval/ab/}).
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
